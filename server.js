@@ -4,7 +4,6 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
-const { authenticateToken } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -25,43 +24,43 @@ const storage = multer.diskStorage({
     cb(null, unique + path.extname(file.originalname));
   },
 });
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
-// Serve uploaded files
 app.use('/uploads', express.static(uploadDir));
 
 // ── Initialize Database ─────────────────────────────
+console.log('[Server] Initializing database...');
 require('./database/db').getDb();
 
 // ── API Routes ──────────────────────────────────────
 app.use('/api/auth', require('./routes/auth'));
-app.use('/api/dashboard', authenticateToken, require('./routes/dashboard'));
-app.use('/api/customers', authenticateToken, require('./routes/customers'));
-app.use('/api/suppliers', authenticateToken, require('./routes/suppliers'));
-app.use('/api/products', authenticateToken, require('./routes/products'));
-app.use('/api/warehouses', authenticateToken, require('./routes/warehouses'));
-app.use('/api/employees', authenticateToken, require('./routes/employees'));
-app.use('/api/leave', authenticateToken, require('./routes/leave'));
-app.use('/api/recruitment', authenticateToken, require('./routes/recruitment'));
-app.use('/api/projects', authenticateToken, require('./routes/projects'));
-app.use('/api/tasks', authenticateToken, require('./routes/tasks'));
-app.use('/api/quotations', authenticateToken, require('./routes/quotations'));
-app.use('/api/sales-orders', authenticateToken, require('./routes/sales-orders'));
-app.use('/api/invoices', authenticateToken, require('./routes/invoices'));
-app.use('/api/purchase-orders', authenticateToken, require('./routes/purchase-orders'));
-app.use('/api/pipeline-deals', authenticateToken, require('./routes/pipeline'));
-app.use('/api/shipping-docs', authenticateToken, require('./routes/shipping-docs'));
-app.use('/api/shipments', authenticateToken, require('./routes/shipments'));
-app.use('/api/charges', authenticateToken, require('./routes/charges'));
-app.use('/api/settings', authenticateToken, require('./routes/settings'));
-app.use('/api/reports', authenticateToken, require('./routes/reports'));
+app.use('/api/dashboard', require('./routes/dashboard'));
+app.use('/api/customers', require('./routes/customers'));
+app.use('/api/suppliers', require('./routes/suppliers'));
+app.use('/api/products', require('./routes/products'));
+app.use('/api/warehouses', require('./routes/warehouses'));
+app.use('/api/employees', require('./routes/employees'));
+app.use('/api/leave', require('./routes/leave'));
+app.use('/api/recruitment', require('./routes/recruitment'));
+app.use('/api/projects', require('./routes/projects'));
+app.use('/api/tasks', require('./routes/tasks'));
+app.use('/api/quotations', require('./routes/quotations'));
+app.use('/api/sales-orders', require('./routes/sales-orders'));
+app.use('/api/invoices', require('./routes/invoices'));
+app.use('/api/purchase-orders', require('./routes/purchase-orders'));
+app.use('/api/pipeline-deals', require('./routes/pipeline'));
+app.use('/api/shipping-docs', require('./routes/shipping-docs'));
+app.use('/api/shipments', require('./routes/shipments'));
+app.use('/api/charges', require('./routes/charges'));
+app.use('/api/settings', require('./routes/settings'));
+app.use('/api/reports', require('./routes/reports'));
 
 // ── File Upload Endpoint ────────────────────────────
-app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => {
+app.post('/api/upload', upload.single('file'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
     const fileUrl = `/uploads/${req.file.filename}`;
-    res.json({ success: true, data: { url: fileUrl, filename: req.file.filename, size: req.file.size } });
+    res.json({ success: true, data: { url: fileUrl, filename: req.file.filename } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -69,7 +68,7 @@ app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => 
 
 // ── Health Check ────────────────────────────────────
 app.get('/api/health', (req, res) => {
-  res.json({ success: true, message: 'USSeaCargo API is running', data: { version: '3.0.0', currency: 'AED', timezone: 'Asia/Dubai' } });
+  res.json({ success: true, data: { version: '3.0.0', currency: 'AED', timezone: 'Asia/Dubai' } });
 });
 
 // ── Static Frontend ─────────────────────────────────
@@ -85,7 +84,7 @@ if (fs.existsSync(publicPath)) {
 
 // ── Error Handler ───────────────────────────────────
 app.use((err, req, res, next) => {
-  console.error('[Error]', err);
+  console.error('[Error]', err.stack || err.message);
   res.status(500).json({ success: false, message: err.message || 'Internal server error' });
 });
 
@@ -93,13 +92,8 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log('');
   console.log('========================================');
-  console.log('  USSeaCargo Logistics ERP Server v3.0');
+  console.log('  USSeaCargo ERP Server v3.0');
   console.log(`  Port: ${PORT}`);
   console.log('  Currency: AED (UAE Dirham)');
-  console.log('  Timezone: Asia/Dubai');
-  console.log('  Status: Running');
   console.log('========================================');
-  console.log('');
 });
-
-module.exports = app;
