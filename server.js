@@ -967,37 +967,78 @@ app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => 
 });
 
 // ── Health Check ────────────────────────────────────
+// Debug endpoint - shows file locations
+app.get('/api/debug/files', (req, res) => {
+  const checks = {};
+  for (const p of possiblePaths) {
+    try {
+      checks[p] = {
+        index_html: fs.existsSync(path.join(p, 'index.html')),
+        assets: fs.existsSync(path.join(p, 'assets')),
+        files: fs.readdirSync(p).slice(0, 20)
+      };
+    } catch (e) {
+      checks[p] = { error: e.message };
+    }
+  }
+  res.json({
+    success: true,
+    data: {
+      __dirname,
+      staticPath,
+      checks,
+      node_env: process.env.NODE_ENV,
+      port: PORT
+    }
+  });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ success: true, data: { version: '3.0.0', currency: 'AED', timezone: 'Asia/Dubai', status: 'running' } });
 });
 
 // ── Static Frontend ─────────────────────────────────
-// Try multiple paths to find frontend files
+// Try MANY paths to find frontend files on Hostinger
 const possiblePaths = [
   path.join(__dirname, 'public'),
   path.join(__dirname, 'public_html'),
   path.join(__dirname, 'dist'),
-  __dirname, // Hostinger: files in same folder as server.js
+  path.join(__dirname, '..', 'public_html'),     // Hostinger: sibling to nodejs/
+  path.join(__dirname, '..'),                      // Parent directory
+  __dirname,                                       // Same folder as server.js
+  '/home/user/domains/usseacargo.com/public_html', // Hostinger common absolute path
+  '/var/www/html',                                 // Common web root
 ];
 
 let staticPath = null;
 for (const p of possiblePaths) {
-  if (fs.existsSync(path.join(p, 'index.html'))) {
-    staticPath = p;
-    console.log('[Static] Serving frontend from:', p);
-    break;
-  }
+  try {
+    if (fs.existsSync(path.join(p, 'index.html'))) {
+      staticPath = p;
+      console.log('[Static] Serving frontend from:', p);
+      break;
+    }
+  } catch (e) {}
 }
 
 if (staticPath) {
   app.use(express.static(staticPath));
-  app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api')) res.sendFile(path.join(staticPath, 'index.html'));
+  // SPA fallback: serve index.html for all non-API routes
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(staticPath, 'index.html'));
   });
+  console.log('[Static] Frontend serving OK from:', staticPath);
 } else {
   console.warn('[Static] No index.html found in any expected path');
   console.warn('[Static] __dirname =', __dirname);
-  console.warn('[Static] Files in __dirname:', fs.readdirSync(__dirname));
+  try {
+    console.warn('[Static] Files in __dirname:', fs.readdirSync(__dirname));
+  } catch (e) {}
+  // Serve a simple HTML that tells user to upload frontend files
+  app.get('/', (req, res) => {
+    res.send('<h1>Backend API Running</h1><p>Upload frontend files (index.html + assets/) to fix this.</p><p>__dirname: ' + __dirname + '</p>');
+  });
 }
 
 // ── Error Handler ───────────────────────────────────
