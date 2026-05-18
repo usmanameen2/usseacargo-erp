@@ -1,40 +1,51 @@
-# USSeaCargo ERP v3
+# USSeaCargo ERP v3 - Complete System
 
-## Deploy to Hostinger
+## Files in this ZIP
 
-### Step 1: Upload to GitHub
-Upload ALL files from this folder to your GitHub repository root.
+| File | Purpose |
+|------|---------|
+| `index.html` | Frontend entry point |
+| `assets/` | Frontend JS + CSS bundles |
+| `server.js` | Backend API (Node.js + Express + SQLite) |
+| `package.json` | Dependencies |
+| `.env` | Configuration |
 
-### Step 2: Connect Hostinger Auto Deploy
-1. Hostinger → your website → Auto Deploy
-2. Connect GitHub repo: `usseacargo-erp`
-3. Branch: `main` → Deploy
+## Upload to Hostinger (2 Steps)
 
-### Step 3: Start Backend Server
-SSH into Hostinger VPS:
-```bash
-cd ~/domains/usseacargo.com/nodejs
-npm install
-node server.js
-```
+### Step 1: Upload Frontend Files
+Using Hostinger File Manager:
+1. Go to your website folder (e.g. `public_html/` or `nodejs/`)
+2. Upload `index.html` and `assets/` folder to the SAME folder as `server.js`
+3. Make sure `server.js` and `index.html` are in the SAME folder
 
-Or with PM2 (keeps running):
-```bash
-npm install -g pm2
-npm install
-pm2 start server.js --name erp
-pm2 save
-pm2 startup
-```
+### Step 2: Restart Node.js Server
+1. Go to Hostinger → Advanced → Node.js
+2. Click "Stop" then "Start"
+3. Or SSH: `node server.js`
 
-### Admin Login
+## Admin Login
 - Username: `admin`
 - Password: `admin123`
+- Admin never expires, cannot be blocked
 
-### Features
-- Full CRUD (Add/Edit/Delete) on all modules
-- MBL, HBL, D.O., NOC, P/L, C.I., C/O, B/E, SI, MFT document management
-- File upload for shipping documents
-- AED/USD currency toggle
-- PDF invoice download & Excel export
-- Password change & user management
+## New Signups
+- Get "user" role (NOT admin)
+- Phone number is REQUIRED
+- Can be BLOCKED by admin if not paid
+- Subscription: Trial / 6 Months / 1 Year
+- Auto-expires after package ends
+
+## Features
+- Dashboard with KPIs and charts
+- Sales & CRM (Customers, Invoices, Quotations)
+- Purchasing & Inventory (Suppliers, Products)
+- HR Management (Employees, Leave, Recruitment)
+- Projects (Tasks, Timesheets)
+- Logistics (MBL, HBL, DO, NOC, PL, CI, CO, BE, SI, MFT)
+- Reports (Financial, Sales, Inventory)
+- Admin Panel (Monitor all companies, block users, assign subscriptions)
+- Settings (Company, Users, Password, Currency AED/USD)
+- Forgot Password (reset code system)
+- PDF Export (Invoices)
+- Excel Export (Tables)
+- File Upload (Shipping documents)
