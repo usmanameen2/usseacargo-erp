@@ -178,6 +178,8 @@ function getDb() {
     const needsSchema = !fs.existsSync(DB_PATH);
     dbInstance = new sqlite3.Database(DB_PATH);
     dbInstance.run('PRAGMA journal_mode = WAL');
+    dbInstance.run('PRAGMA busy_timeout = 10000'); // 10 second busy timeout
+    dbInstance.run('PRAGMA synchronous = NORMAL');
     if (needsSchema) {
       console.log('[DB] Creating database schema...');
       dbInstance.exec(SCHEMA);
@@ -187,212 +189,97 @@ function getDb() {
   return dbInstance;
 }
 
+// Database helpers with 5-second timeout
+function withTimeout(promise, ms = 5000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Database timeout')), ms))
+  ]);
+}
+
 function dbRun(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    const db = getDb();
-    db.run(sql, params, function(err) {
-      if (err) reject(err);
-      else resolve({ lastID: this.lastID, changes: this.changes });
-    });
-  });
+  return withTimeout(new Promise((resolve, reject) => {
+    try {
+      const db = getDb();
+      db.run(sql, params, function(err) {
+        if (err) reject(err);
+        else resolve({ lastID: this.lastID, changes: this.changes });
+      });
+    } catch (e) { reject(e); }
+  }));
 }
 
 function dbGet(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    const db = getDb();
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
+  return withTimeout(new Promise((resolve, reject) => {
+    try {
+      const db = getDb();
+      db.get(sql, params, (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    } catch (e) { reject(e); }
+  }));
 }
 
 function dbAll(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    const db = getDb();
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
+  return withTimeout(new Promise((resolve, reject) => {
+    try {
+      const db = getDb();
+      db.all(sql, params, (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    } catch (e) { reject(e); }
+  }));
 }
 
-// Ensure all tables exist (for databases created before schema update)
+// Ensure all tables exist (runs in background, non-blocking)
 async function ensureTablesExist() {
   try {
-    // Add subscription columns to existing users table
-    await dbRun(`ALTER TABLE users ADD COLUMN subscription_plan TEXT DEFAULT 'trial'`).catch(() => {});
-    await dbRun(`ALTER TABLE users ADD COLUMN subscription_expiry TEXT`).catch(() => {});
-    await dbRun(`ALTER TABLE users ADD COLUMN subscription_status TEXT DEFAULT 'active'`).catch(() => {});
-    // Add password_reset table if not exists
-    await dbRun(`CREATE TABLE IF NOT EXISTS password_reset (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER,
-      reset_code TEXT,
-      expires_at TEXT,
-      used INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now'))
-    )`).catch(() => {});
-    await dbRun(`CREATE TABLE IF NOT EXISTS companies (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      company_name TEXT NOT NULL,
-      contact_email TEXT,
-      contact_phone TEXT,
-      contact_person TEXT,
-      industry TEXT,
-      employee_count TEXT,
-      status TEXT DEFAULT 'active',
-      created_by_user_id INTEGER,
-      created_at TEXT DEFAULT (datetime('now'))
-    )`);
-    await dbRun(`CREATE TABLE IF NOT EXISTS signup_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER,
-      company_name TEXT,
-      email TEXT,
-      full_name TEXT,
-      ip_address TEXT,
-      user_agent TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
-    )`);
-    console.log('[DB] Ensured companies and signup_log tables exist.');
+    // Add subscription columns to existing users table (fire and forget)
+    dbRun(`ALTER TABLE users ADD COLUMN subscription_plan TEXT DEFAULT 'trial'`).catch(() => {});
+    dbRun(`ALTER TABLE users ADD COLUMN subscription_expiry TEXT`).catch(() => {});
+    dbRun(`ALTER TABLE users ADD COLUMN subscription_status TEXT DEFAULT 'active'`).catch(() => {});
+    
+    // Add password_reset table
+    dbRun(`CREATE TABLE IF NOT EXISTS password_reset (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, reset_code TEXT, expires_at TEXT, used INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {});
+    
+    // Create all logistics tables in parallel
+    await Promise.all([
+      dbRun(`CREATE TABLE IF NOT EXISTS companies (id INTEGER PRIMARY KEY AUTOINCREMENT, company_name TEXT NOT NULL, contact_email TEXT, contact_phone TEXT, contact_person TEXT, industry TEXT, employee_count TEXT, status TEXT DEFAULT 'active', created_by_user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
+      dbRun(`CREATE TABLE IF NOT EXISTS signup_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, company_name TEXT, email TEXT, full_name TEXT, ip_address TEXT, user_agent TEXT, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
+      dbRun(`CREATE TABLE IF NOT EXISTS sea_import_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, vessel TEXT, voyage TEXT, eta TEXT, etd TEXT, liner TEXT, rotation_no TEXT, mbl_no TEXT, hbl_no TEXT, no_bl TEXT, shipper TEXT, consignee TEXT, port_of_loading TEXT, port_of_discharge TEXT, container_no TEXT, container_type TEXT, customer_id INTEGER, customer_name TEXT, sales_person TEXT, cs_executive TEXT, documentation TEXT, agent TEXT, service_category TEXT, cargo_type TEXT, place_of_delivery TEXT, tot_bl INTEGER DEFAULT 0, ft_20 INTEGER DEFAULT 0, ft_40 INTEGER DEFAULT 0, cbm REAL DEFAULT 0, weight_kg REAL DEFAULT 0, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
+      dbRun(`CREATE TABLE IF NOT EXISTS sea_export_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, vessel TEXT, voyage TEXT, eta TEXT, sob TEXT, liner TEXT, pod_agent TEXT, mbl_type TEXT, mbl_no TEXT, pod TEXT, no_bl TEXT, hbl_no TEXT, shipper TEXT, port_of_loading TEXT, container_no TEXT, container_type TEXT, customer_id INTEGER, customer_name TEXT, sales_person TEXT, cs_executive TEXT, doc_by TEXT, liner_ref TEXT, service_category TEXT, cargo_type TEXT, place_of_delivery TEXT, tot_bl INTEGER DEFAULT 0, ft_20 INTEGER DEFAULT 0, ft_40 INTEGER DEFAULT 0, cbm REAL DEFAULT 0, weight_kg REAL DEFAULT 0, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
+      dbRun(`CREATE TABLE IF NOT EXISTS air_import_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, flight_no TEXT, airline TEXT, eta TEXT, etd TEXT, mawb_no TEXT, hawb_no TEXT, shipper TEXT, consignee TEXT, airport_of_origin TEXT, airport_of_destination TEXT, no_pcs INTEGER DEFAULT 0, weight_kg REAL DEFAULT 0, chargeable_weight REAL DEFAULT 0, cargo_type TEXT, customer_id INTEGER, customer_name TEXT, sales_person TEXT, cs_executive TEXT, agent TEXT, service_category TEXT, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
+      dbRun(`CREATE TABLE IF NOT EXISTS air_export_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, flight_no TEXT, airline TEXT, eta TEXT, etd TEXT, mawb_no TEXT, hawb_no TEXT, shipper TEXT, consignee TEXT, airport_of_origin TEXT, airport_of_destination TEXT, no_pcs INTEGER DEFAULT 0, weight_kg REAL DEFAULT 0, chargeable_weight REAL DEFAULT 0, cargo_type TEXT, customer_id INTEGER, customer_name TEXT, sales_person TEXT, cs_executive TEXT, agent TEXT, service_category TEXT, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
+      dbRun(`CREATE TABLE IF NOT EXISTS transshipment_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, vessel TEXT, voyage TEXT, eta TEXT, etd TEXT, liner TEXT, mbl_no TEXT, hbl_no TEXT, shipper TEXT, consignee TEXT, port_of_origin TEXT, port_of_tranship TEXT, port_of_destination TEXT, container_no TEXT, container_type TEXT, customer_id INTEGER, customer_name TEXT, agent TEXT, tot_bl INTEGER DEFAULT 0, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
+      dbRun(`CREATE TABLE IF NOT EXISTS liner_schedules (id INTEGER PRIMARY KEY AUTOINCREMENT, liner_name TEXT, vessel_name TEXT, voyage TEXT, port_of_loading TEXT, port_of_discharge TEXT, eta TEXT, etd TEXT, cutoff_date TEXT, frequency TEXT, service_route TEXT, status TEXT DEFAULT 'Active', remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
+      dbRun(`CREATE TABLE IF NOT EXISTS cf_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, be_no TEXT, be_date TEXT, importer TEXT, cha TEXT, port TEXT, igr_no TEXT, igr_date TEXT, assess_value REAL DEFAULT 0, duty_amount REAL DEFAULT 0, container_no TEXT, no_of_packages INTEGER DEFAULT 0, weight_kg REAL DEFAULT 0, delivery_date TEXT, customer_id INTEGER, customer_name TEXT, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
+      dbRun(`CREATE TABLE IF NOT EXISTS other_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, description TEXT, customer_id INTEGER, customer_name TEXT, sales_person TEXT, amount REAL DEFAULT 0, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
+    ]);
 
-    // ── Sea Import Jobs ────────────────────────────────
-    await dbRun(`CREATE TABLE IF NOT EXISTS sea_import_jobs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT,
-      job_status TEXT DEFAULT 'Pending', branch TEXT,
-      vessel TEXT, voyage TEXT, eta TEXT, etd TEXT, liner TEXT,
-      rotation_no TEXT, mbl_no TEXT, hbl_no TEXT, no_bl TEXT,
-      shipper TEXT, consignee TEXT, port_of_loading TEXT,
-      port_of_discharge TEXT, container_no TEXT, container_type TEXT,
-      customer_id INTEGER, customer_name TEXT, sales_person TEXT,
-      cs_executive TEXT, documentation TEXT, agent TEXT,
-      service_category TEXT, cargo_type TEXT, place_of_delivery TEXT,
-      tot_bl INTEGER DEFAULT 0, ft_20 INTEGER DEFAULT 0,
-      ft_40 INTEGER DEFAULT 0, cbm REAL DEFAULT 0, weight_kg REAL DEFAULT 0,
-      remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
-    )`);
-
-    // ── Sea Export Jobs ────────────────────────────────
-    await dbRun(`CREATE TABLE IF NOT EXISTS sea_export_jobs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT,
-      job_status TEXT DEFAULT 'Pending', branch TEXT,
-      vessel TEXT, voyage TEXT, eta TEXT, sob TEXT, liner TEXT,
-      pod_agent TEXT, mbl_type TEXT, mbl_no TEXT, pod TEXT,
-      no_bl TEXT, hbl_no TEXT, shipper TEXT,
-      port_of_loading TEXT, container_no TEXT, container_type TEXT,
-      customer_id INTEGER, customer_name TEXT, sales_person TEXT,
-      cs_executive TEXT, doc_by TEXT, liner_ref TEXT,
-      service_category TEXT, cargo_type TEXT, place_of_delivery TEXT,
-      tot_bl INTEGER DEFAULT 0, ft_20 INTEGER DEFAULT 0,
-      ft_40 INTEGER DEFAULT 0, cbm REAL DEFAULT 0, weight_kg REAL DEFAULT 0,
-      remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
-    )`);
-
-    // ── Air Import Jobs ────────────────────────────────
-    await dbRun(`CREATE TABLE IF NOT EXISTS air_import_jobs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT,
-      job_status TEXT DEFAULT 'Pending', branch TEXT,
-      flight_no TEXT, airline TEXT, eta TEXT, etd TEXT,
-      mawb_no TEXT, hawb_no TEXT, shipper TEXT, consignee TEXT,
-      airport_of_origin TEXT, airport_of_destination TEXT,
-      no_pcs INTEGER DEFAULT 0, weight_kg REAL DEFAULT 0,
-      chargeable_weight REAL DEFAULT 0, cargo_type TEXT,
-      customer_id INTEGER, customer_name TEXT, sales_person TEXT,
-      cs_executive TEXT, agent TEXT, service_category TEXT,
-      remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
-    )`);
-
-    // ── Air Export Jobs ────────────────────────────────
-    await dbRun(`CREATE TABLE IF NOT EXISTS air_export_jobs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT,
-      job_status TEXT DEFAULT 'Pending', branch TEXT,
-      flight_no TEXT, airline TEXT, eta TEXT, etd TEXT,
-      mawb_no TEXT, hawb_no TEXT, shipper TEXT, consignee TEXT,
-      airport_of_origin TEXT, airport_of_destination TEXT,
-      no_pcs INTEGER DEFAULT 0, weight_kg REAL DEFAULT 0,
-      chargeable_weight REAL DEFAULT 0, cargo_type TEXT,
-      customer_id INTEGER, customer_name TEXT, sales_person TEXT,
-      cs_executive TEXT, agent TEXT, service_category TEXT,
-      remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
-    )`);
-
-    // ── Transshipment Jobs ─────────────────────────────
-    await dbRun(`CREATE TABLE IF NOT EXISTS transshipment_jobs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      job_no TEXT, job_type TEXT, job_date TEXT,
-      job_status TEXT DEFAULT 'Pending', branch TEXT,
-      vessel TEXT, voyage TEXT, eta TEXT, etd TEXT, liner TEXT,
-      mbl_no TEXT, hbl_no TEXT, shipper TEXT, consignee TEXT,
-      port_of_origin TEXT, port_of_tranship TEXT, port_of_destination TEXT,
-      container_no TEXT, container_type TEXT,
-      customer_id INTEGER, customer_name TEXT, agent TEXT,
-      tot_bl INTEGER DEFAULT 0, remarks TEXT,
-      user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
-    )`);
-
-    // ── Liner Schedules ────────────────────────────────
-    await dbRun(`CREATE TABLE IF NOT EXISTS liner_schedules (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      liner_name TEXT, vessel_name TEXT, voyage TEXT,
-      port_of_loading TEXT, port_of_discharge TEXT,
-      eta TEXT, etd TEXT, cutoff_date TEXT,
-      frequency TEXT, service_route TEXT, status TEXT DEFAULT 'Active',
-      remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
-    )`);
-
-    // ── C & F Jobs ─────────────────────────────────────
-    await dbRun(`CREATE TABLE IF NOT EXISTS cf_jobs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      job_no TEXT, job_type TEXT, job_date TEXT,
-      job_status TEXT DEFAULT 'Pending', branch TEXT,
-      be_no TEXT, be_date TEXT, importer TEXT, cha TEXT,
-      port TEXT, igr_no TEXT, igr_date TEXT,
-      assess_value REAL DEFAULT 0, duty_amount REAL DEFAULT 0,
-      container_no TEXT, no_of_packages INTEGER DEFAULT 0,
-      weight_kg REAL DEFAULT 0, delivery_date TEXT,
-      customer_id INTEGER, customer_name TEXT,
-      remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
-    )`);
-
-    // ── Other Jobs ─────────────────────────────────────
-    await dbRun(`CREATE TABLE IF NOT EXISTS other_jobs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      job_no TEXT, job_type TEXT, job_date TEXT,
-      job_status TEXT DEFAULT 'Pending', branch TEXT,
-      description TEXT, customer_id INTEGER, customer_name TEXT,
-      sales_person TEXT, amount REAL DEFAULT 0,
-      remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
-    )`);
-
-    console.log('[DB] Ensured all logistics tables exist.');
+    console.log('[DB] All tables ensured.');
   } catch (err) {
     console.error('[DB] Error ensuring tables:', err.message);
   }
 }
-// Ensure tables are ready BEFORE starting server
-(async () => {
-  try {
-    await ensureTablesExist();
-    console.log('[DB] All tables ensured. Starting server...');
-    app.listen(PORT, () => {
-      console.log('');
-      console.log('========================================');
-      console.log('  USSeaCargo ERP Server v3.0');
-      console.log('  Port: ' + PORT);
-      console.log('  Currency: AED (UAE Dirham)');
-      console.log('  JWT: ' + JWT_SECRET.substring(0, 10) + '...');
-      console.log('========================================');
-    });
-  } catch (err) {
-    console.error('[DB] Failed to ensure tables:', err.message);
-    process.exit(1);
-  }
-})();
+// ── Start Server ────────────────────────────────────
+// Start listening immediately - don't block on table creation
+app.listen(PORT, () => {
+  console.log('');
+  console.log('========================================');
+  console.log('  USSeaCargo ERP Server v3.0');
+  console.log('  Port: ' + PORT);
+  console.log('  Currency: AED (UAE Dirham)');
+  console.log('========================================');
+  
+  // Ensure tables in background (non-blocking)
+  ensureTablesExist().then(() => {
+    console.log('[DB] All tables ensured.');
+  }).catch(err => {
+    console.error('[DB] Error ensuring tables:', err.message);
+  });
+});
 
 // ── AUTH Routes ─────────────────────────────────────
 const authRouter = express.Router();
