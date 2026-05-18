@@ -192,13 +192,14 @@ app.use(express.static(path.join(process.cwd(), 'dist')));
 
 /** POST /api/auth/register */
 app.post('/api/auth/register', asyncHandler(async (req, res) => {
-  const { email, password, full_name, phone, company } = req.body;
+  const body = convertBodyKeys(req.body);
+  const { email, password, full_name, phone, company } = body;
   if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
+    return res.status(400).json({ success: false, message: 'Email and password are required' });
   }
   const existing = await dbAll('SELECT id FROM users WHERE email = ?', [email]);
   if (existing.length > 0) {
-    return res.status(409).json({ error: 'Email already registered' });
+    return res.status(409).json({ success: false, message: 'Email already registered' });
   }
   const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
   const now = new Date().toISOString();
@@ -297,7 +298,25 @@ app.get('/api/auth/me', authMiddleware, asyncHandler(async (req, res) => {
 }));
 
 // =============================================================================
-// 8. GENERIC CRUD ROUTE GENERATOR
+// 8. UTILITY: Convert camelCase keys to snake_case
+// =============================================================================
+
+function toSnakeCase(str) {
+  return str.replace(/([A-Z])/g, '_$1').toLowerCase();
+}
+
+/** Convert request body keys from camelCase to snake_case */
+function convertBodyKeys(body) {
+  const converted = {};
+  for (const [key, value] of Object.entries(body)) {
+    const snakeKey = toSnakeCase(key);
+    converted[snakeKey] = value;
+  }
+  return converted;
+}
+
+// =============================================================================
+// 9. GENERIC CRUD ROUTE GENERATOR
 // =============================================================================
 
 function generateCrudRoutes(routePath, tableName, columns, searchableCols = []) {
@@ -330,8 +349,9 @@ function generateCrudRoutes(routePath, tableName, columns, searchableCols = []) 
 
   // Create
   app.post(`/api/${routePath}`, authMiddleware, asyncHandler(async (req, res) => {
+    const body = convertBodyKeys(req.body);
     const insertableCols = columns.filter(c => c !== pk);
-    const values = insertableCols.map(col => req.body[col] !== undefined ? req.body[col] : null);
+    const values = insertableCols.map(col => body[col] !== undefined ? body[col] : null);
     const colNames = insertableCols.join(', ');
     const placeholders = insertableCols.map(() => '?').join(', ');
     const result = await dbRun(
@@ -344,12 +364,13 @@ function generateCrudRoutes(routePath, tableName, columns, searchableCols = []) 
 
   // Update
   app.put(`/api/${routePath}/:id`, authMiddleware, asyncHandler(async (req, res) => {
-    const updatableCols = columns.filter(c => c !== pk && req.body[c] !== undefined);
+    const body = convertBodyKeys(req.body);
+    const updatableCols = columns.filter(c => c !== pk && body[c] !== undefined);
     if (updatableCols.length === 0) {
       return res.status(400).json({ success: false, message: 'No fields to update' });
     }
     const setClause = updatableCols.map(c => `${c} = ?`).join(', ');
-    const values = updatableCols.map(col => req.body[col]);
+    const values = updatableCols.map(col => body[col]);
     values.push(req.params.id);
     await dbRun(`UPDATE ${tableName} SET ${setClause} WHERE ${pk} = ?`, values);
     const updatedRow = await dbAll(`SELECT * FROM ${tableName} WHERE ${pk} = ?`, [req.params.id]);
@@ -489,7 +510,8 @@ app.get('/api/invoices/:id/items', authMiddleware, asyncHandler(async (req, res)
 }));
 
 app.post('/api/invoices/:id/items', authMiddleware, asyncHandler(async (req, res) => {
-  const { description, quantity, unit, rate, amount } = req.body;
+  const body = convertBodyKeys(req.body);
+  const { description, quantity, unit, rate, amount } = body;
   const result = await dbRun(
     'INSERT INTO invoice_items (invoice_id, description, quantity, unit, rate, amount) VALUES (?, ?, ?, ?, ?, ?)',
     [req.params.id, description, quantity, unit, rate, amount]
@@ -499,7 +521,8 @@ app.post('/api/invoices/:id/items', authMiddleware, asyncHandler(async (req, res
 }));
 
 app.put('/api/invoice-items/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const { description, quantity, unit, rate, amount } = req.body;
+  const body = convertBodyKeys(req.body);
+  const { description, quantity, unit, rate, amount } = body;
   await dbRun(
     'UPDATE invoice_items SET description = ?, quantity = ?, unit = ?, rate = ?, amount = ? WHERE id = ?',
     [description, quantity, unit, rate, amount, req.params.id]
@@ -523,7 +546,8 @@ app.get('/api/journal-entries/:id/lines', authMiddleware, asyncHandler(async (re
 }));
 
 app.post('/api/journal-entries/:id/lines', authMiddleware, asyncHandler(async (req, res) => {
-  const { account_id, account_name, debit, credit, description } = req.body;
+  const body = convertBodyKeys(req.body);
+  const { account_id, account_name, debit, credit, description } = body;
   const result = await dbRun(
     'INSERT INTO journal_entry_lines (journal_entry_id, account_id, account_name, debit, credit, description) VALUES (?, ?, ?, ?, ?, ?)',
     [req.params.id, account_id, account_name, debit || 0, credit || 0, description]
@@ -533,7 +557,8 @@ app.post('/api/journal-entries/:id/lines', authMiddleware, asyncHandler(async (r
 }));
 
 app.put('/api/journal-entry-lines/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const { account_id, account_name, debit, credit, description } = req.body;
+  const body = convertBodyKeys(req.body);
+  const { account_id, account_name, debit, credit, description } = body;
   await dbRun(
     'UPDATE journal_entry_lines SET account_id = ?, account_name = ?, debit = ?, credit = ?, description = ? WHERE id = ?',
     [account_id, account_name, debit, credit, description, req.params.id]
