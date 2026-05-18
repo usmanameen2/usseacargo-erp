@@ -256,6 +256,120 @@ async function ensureTablesExist() {
       created_at TEXT DEFAULT (datetime('now'))
     )`);
     console.log('[DB] Ensured companies and signup_log tables exist.');
+
+    // ── Sea Import Jobs ────────────────────────────────
+    db.run(`CREATE TABLE IF NOT EXISTS sea_import_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT,
+      job_status TEXT DEFAULT 'Pending', branch TEXT,
+      vessel TEXT, voyage TEXT, eta TEXT, etd TEXT, liner TEXT,
+      rotation_no TEXT, mbl_no TEXT, hbl_no TEXT, no_bl TEXT,
+      shipper TEXT, consignee TEXT, port_of_loading TEXT,
+      port_of_discharge TEXT, container_no TEXT, container_type TEXT,
+      customer_id INTEGER, customer_name TEXT, sales_person TEXT,
+      cs_executive TEXT, documentation TEXT, agent TEXT,
+      service_category TEXT, cargo_type TEXT, place_of_delivery TEXT,
+      tot_bl INTEGER DEFAULT 0, ft_20 INTEGER DEFAULT 0,
+      ft_40 INTEGER DEFAULT 0, cbm REAL DEFAULT 0, weight_kg REAL DEFAULT 0,
+      remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
+    )`, () => {});
+
+    // ── Sea Export Jobs ────────────────────────────────
+    db.run(`CREATE TABLE IF NOT EXISTS sea_export_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT,
+      job_status TEXT DEFAULT 'Pending', branch TEXT,
+      vessel TEXT, voyage TEXT, eta TEXT, sob TEXT, liner TEXT,
+      pod_agent TEXT, mbl_type TEXT, mbl_no TEXT, pod TEXT,
+      no_bl TEXT, hbl_no TEXT, shipper TEXT,
+      port_of_loading TEXT, container_no TEXT, container_type TEXT,
+      customer_id INTEGER, customer_name TEXT, sales_person TEXT,
+      cs_executive TEXT, doc_by TEXT, liner_ref TEXT,
+      service_category TEXT, cargo_type TEXT, place_of_delivery TEXT,
+      tot_bl INTEGER DEFAULT 0, ft_20 INTEGER DEFAULT 0,
+      ft_40 INTEGER DEFAULT 0, cbm REAL DEFAULT 0, weight_kg REAL DEFAULT 0,
+      remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
+    )`, () => {});
+
+    // ── Air Import Jobs ────────────────────────────────
+    db.run(`CREATE TABLE IF NOT EXISTS air_import_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT,
+      job_status TEXT DEFAULT 'Pending', branch TEXT,
+      flight_no TEXT, airline TEXT, eta TEXT, etd TEXT,
+      mawb_no TEXT, hawb_no TEXT, shipper TEXT, consignee TEXT,
+      airport_of_origin TEXT, airport_of_destination TEXT,
+      no_pcs INTEGER DEFAULT 0, weight_kg REAL DEFAULT 0,
+      chargeable_weight REAL DEFAULT 0, cargo_type TEXT,
+      customer_id INTEGER, customer_name TEXT, sales_person TEXT,
+      cs_executive TEXT, agent TEXT, service_category TEXT,
+      remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
+    )`, () => {});
+
+    // ── Air Export Jobs ────────────────────────────────
+    db.run(`CREATE TABLE IF NOT EXISTS air_export_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT,
+      job_status TEXT DEFAULT 'Pending', branch TEXT,
+      flight_no TEXT, airline TEXT, eta TEXT, etd TEXT,
+      mawb_no TEXT, hawb_no TEXT, shipper TEXT, consignee TEXT,
+      airport_of_origin TEXT, airport_of_destination TEXT,
+      no_pcs INTEGER DEFAULT 0, weight_kg REAL DEFAULT 0,
+      chargeable_weight REAL DEFAULT 0, cargo_type TEXT,
+      customer_id INTEGER, customer_name TEXT, sales_person TEXT,
+      cs_executive TEXT, agent TEXT, service_category TEXT,
+      remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
+    )`, () => {});
+
+    // ── Transshipment Jobs ─────────────────────────────
+    db.run(`CREATE TABLE IF NOT EXISTS transshipment_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_no TEXT, job_type TEXT, job_date TEXT,
+      job_status TEXT DEFAULT 'Pending', branch TEXT,
+      vessel TEXT, voyage TEXT, eta TEXT, etd TEXT, liner TEXT,
+      mbl_no TEXT, hbl_no TEXT, shipper TEXT, consignee TEXT,
+      port_of_origin TEXT, port_of_tranship TEXT, port_of_destination TEXT,
+      container_no TEXT, container_type TEXT,
+      customer_id INTEGER, customer_name TEXT, agent TEXT,
+      tot_bl INTEGER DEFAULT 0, remarks TEXT,
+      user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
+    )`, () => {});
+
+    // ── Liner Schedules ────────────────────────────────
+    db.run(`CREATE TABLE IF NOT EXISTS liner_schedules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      liner_name TEXT, vessel_name TEXT, voyage TEXT,
+      port_of_loading TEXT, port_of_discharge TEXT,
+      eta TEXT, etd TEXT, cutoff_date TEXT,
+      frequency TEXT, service_route TEXT, status TEXT DEFAULT 'Active',
+      remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
+    )`, () => {});
+
+    // ── C & F Jobs ─────────────────────────────────────
+    db.run(`CREATE TABLE IF NOT EXISTS cf_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_no TEXT, job_type TEXT, job_date TEXT,
+      job_status TEXT DEFAULT 'Pending', branch TEXT,
+      be_no TEXT, be_date TEXT, importer TEXT, cha TEXT,
+      port TEXT, igr_no TEXT, igr_date TEXT,
+      assess_value REAL DEFAULT 0, duty_amount REAL DEFAULT 0,
+      container_no TEXT, no_of_packages INTEGER DEFAULT 0,
+      weight_kg REAL DEFAULT 0, delivery_date TEXT,
+      customer_id INTEGER, customer_name TEXT,
+      remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
+    )`, () => {});
+
+    // ── Other Jobs ─────────────────────────────────────
+    db.run(`CREATE TABLE IF NOT EXISTS other_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_no TEXT, job_type TEXT, job_date TEXT,
+      job_status TEXT DEFAULT 'Pending', branch TEXT,
+      description TEXT, customer_id INTEGER, customer_name TEXT,
+      sales_person TEXT, amount REAL DEFAULT 0,
+      remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
+    )`, () => {});
+
+    console.log('[DB] Ensured logistics tables exist.');
   } catch (err) {
     console.error('[DB] Error ensuring tables:', err.message);
   }
@@ -835,6 +949,100 @@ adminRouter.post('/users/:id/assign-plan', async (req, res) => {
 
 app.use('/api/admin', adminRouter);
 
+// ── Logistics Routes ────────────────────────────────
+// Generic CRUD for logistics tables (no user_id filter for simplicity)
+function createLogisticsRoutes(table, columns, searchFields) {
+  const router = express.Router();
+  router.use(authenticateToken);
+
+  router.get('/', async (req, res) => {
+    try {
+      const { search, status, limit = 100, offset = 0 } = req.query;
+      let sql = `SELECT * FROM ${table}`;
+      const conditions = [];
+      const params = [];
+      if (status) { conditions.push('job_status = ?'); params.push(status); }
+      if (search && searchFields.length > 0) {
+        conditions.push('(' + searchFields.map(f => `${f} LIKE ?`).join(' OR ') + ')');
+        searchFields.forEach(() => params.push(`%${search}%`));
+      }
+      if (conditions.length > 0) sql += ' WHERE ' + conditions.join(' AND ');
+      sql += ' ORDER BY id DESC LIMIT ? OFFSET ?';
+      params.push(parseInt(limit), parseInt(offset));
+      const rows = await dbAll(sql, params);
+      res.json({ success: true, data: rows, total: rows.length });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  router.get('/:id', async (req, res) => {
+    try {
+      const row = await dbGet(`SELECT * FROM ${table} WHERE id = ?`, [req.params.id]);
+      if (!row) return res.status(404).json({ success: false, message: 'Not found' });
+      res.json({ success: true, data: row });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  router.post('/', async (req, res) => {
+    try {
+      const body = req.body;
+      const keys = Object.keys(body).filter(k => k !== 'id' && k !== 'created_at');
+      if (keys.length === 0) return res.status(400).json({ success: false, message: 'No data provided' });
+      const cols = keys.join(', ');
+      const placeholders = keys.map(() => '?').join(', ');
+      const values = keys.map(k => body[k]);
+      const result = await dbRun(`INSERT INTO ${table} (${cols}) VALUES (${placeholders})`, values);
+      res.status(201).json({ success: true, data: { id: result.lastID, ...body }, message: 'Created' });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  router.put('/:id', async (req, res) => {
+    try {
+      const body = req.body;
+      const keys = Object.keys(body).filter(k => k !== 'id' && k !== 'created_at');
+      if (keys.length === 0) return res.status(400).json({ success: false, message: 'No data provided' });
+      const setClause = keys.map(k => `${k} = ?`).join(', ');
+      const values = keys.map(k => body[k]);
+      await dbRun(`UPDATE ${table} SET ${setClause} WHERE id = ?`, [...values, req.params.id]);
+      res.json({ success: true, message: 'Updated' });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  router.delete('/:id', async (req, res) => {
+    try {
+      await dbRun(`DELETE FROM ${table} WHERE id = ?`, [req.params.id]);
+      res.json({ success: true, message: 'Deleted' });
+    } catch (err) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  return router;
+}
+
+app.use('/api/logistics/sea-import', createLogisticsRoutes('sea_import_jobs', 'id, job_no, job_type, shipment_type, job_date, job_status, branch, vessel, voyage, eta, etd, liner, rotation_no, mbl_no, hbl_no, no_bl, shipper, consignee, port_of_loading, port_of_discharge, container_no, container_type, customer_id, customer_name, sales_person, cs_executive, documentation, agent, service_category, cargo_type, place_of_delivery, tot_bl, ft_20, ft_40, cbm, weight_kg, remarks, user_id, created_at', ['job_no', 'vessel', 'mbl_no', 'hbl_no', 'shipper', 'consignee', 'customer_name']));
+
+app.use('/api/logistics/sea-export', createLogisticsRoutes('sea_export_jobs', 'id, job_no, job_type, shipment_type, job_date, job_status, branch, vessel, voyage, eta, sob, liner, pod_agent, mbl_type, mbl_no, pod, no_bl, hbl_no, shipper, port_of_loading, container_no, container_type, customer_id, customer_name, sales_person, cs_executive, doc_by, liner_ref, service_category, cargo_type, place_of_delivery, tot_bl, ft_20, ft_40, cbm, weight_kg, remarks, user_id, created_at', ['job_no', 'vessel', 'mbl_no', 'hbl_no', 'shipper', 'customer_name']));
+
+app.use('/api/logistics/air-import', createLogisticsRoutes('air_import_jobs', 'id, job_no, job_type, shipment_type, job_date, job_status, branch, flight_no, airline, eta, etd, mawb_no, hawb_no, shipper, consignee, airport_of_origin, airport_of_destination, no_pcs, weight_kg, chargeable_weight, cargo_type, customer_id, customer_name, sales_person, cs_executive, agent, service_category, remarks, user_id, created_at', ['job_no', 'flight_no', 'mawb_no', 'hawb_no', 'shipper', 'customer_name']));
+
+app.use('/api/logistics/air-export', createLogisticsRoutes('air_export_jobs', 'id, job_no, job_type, shipment_type, job_date, job_status, branch, flight_no, airline, eta, etd, mawb_no, hawb_no, shipper, consignee, airport_of_origin, airport_of_destination, no_pcs, weight_kg, chargeable_weight, cargo_type, customer_id, customer_name, sales_person, cs_executive, agent, service_category, remarks, user_id, created_at', ['job_no', 'flight_no', 'mawb_no', 'hawb_no', 'shipper', 'customer_name']));
+
+app.use('/api/logistics/transshipment', createLogisticsRoutes('transshipment_jobs', 'id, job_no, job_type, job_date, job_status, branch, vessel, voyage, eta, etd, liner, mbl_no, hbl_no, shipper, consignee, port_of_origin, port_of_tranship, port_of_destination, container_no, container_type, customer_id, customer_name, agent, tot_bl, remarks, user_id, created_at', ['job_no', 'vessel', 'mbl_no', 'hbl_no', 'customer_name']));
+
+app.use('/api/logistics/liner', createLogisticsRoutes('liner_schedules', 'id, liner_name, vessel_name, voyage, port_of_loading, port_of_discharge, eta, etd, cutoff_date, frequency, service_route, status, remarks, user_id, created_at', ['liner_name', 'vessel_name', 'port_of_loading', 'port_of_discharge']));
+
+app.use('/api/logistics/cf', createLogisticsRoutes('cf_jobs', 'id, job_no, job_type, job_date, job_status, branch, be_no, be_date, importer, cha, port, igr_no, igr_date, assess_value, duty_amount, container_no, no_of_packages, weight_kg, delivery_date, customer_id, customer_name, remarks, user_id, created_at', ['job_no', 'be_no', 'importer', 'cha', 'customer_name']));
+
+app.use('/api/logistics/other', createLogisticsRoutes('other_jobs', 'id, job_no, job_type, job_date, job_status, branch, description, customer_id, customer_name, sales_person, amount, remarks, user_id, created_at', ['job_no', 'description', 'customer_name']));
+
 app.use('/api/customers', authenticateToken, createCrudRoutes('customers', 'id, name, company, email, phone, address, city, country, status, notes, total_spent, created_at', ['name', 'company', 'email']));
 app.use('/api/suppliers', authenticateToken, createCrudRoutes('suppliers', 'id, name, contact_person, email, phone, address, category, rating, status, total_orders, created_at', ['name', 'contact_person', 'email']));
 app.use('/api/products', authenticateToken, createCrudRoutes('products', 'id, sku, name, category, warehouse_id, quantity, reorder_level, unit_cost, unit_price, status, description, created_at', ['sku', 'name']));
@@ -871,7 +1079,15 @@ app.use('/api/projects/tasks', authenticateToken, createCrudRoutes('tasks', 'id,
 app.use('/api/logistics/shipping-docs', authenticateToken, createCrudRoutes('shipping_docs', 'id, doc_type, doc_number, reference, date, vessel_voyage, shipper, consignee, port_of_loading, port_of_discharge, container_number, status, file_url, notes, created_at', ['doc_number', 'shipper', 'consignee']));
 app.use('/api/logistics/shipments', authenticateToken, createCrudRoutes('shipments', 'id, booking_number, rotation_number, vessel_name, carrier_scac, shipper, consignee, mode, container_type, container_count, origin, destination, etd, eta, status, incoterm, created_at', ['booking_number', 'vessel_name']));
 // Settings aliases
-app.use('/api/settings/users-list', authenticateToken, createCrudRoutes('users', 'id, username, email, full_name, role, company_name, phone, avatar_initials, is_active, created_at', ['username', 'email', 'full_name']));
+// Custom users-list route (users table doesn't have user_id column)
+app.get('/api/settings/users-list', authenticateToken, async (req, res) => {
+  try {
+    const rows = await dbAll('SELECT id, username, email, full_name, role, company_name, phone, avatar_initials, is_active, created_at FROM users ORDER BY id DESC');
+    res.json({ success: true, data: rows, total: rows.length });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 // ── Settings Routes ─────────────────────────────────
 const settingsRouter = express.Router();
