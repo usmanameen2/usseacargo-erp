@@ -258,7 +258,7 @@ async function ensureTablesExist() {
     console.log('[DB] Ensured companies and signup_log tables exist.');
 
     // ── Sea Import Jobs ────────────────────────────────
-    db.run(`CREATE TABLE IF NOT EXISTS sea_import_jobs (
+    await dbRun(`CREATE TABLE IF NOT EXISTS sea_import_jobs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT,
       job_status TEXT DEFAULT 'Pending', branch TEXT,
@@ -272,10 +272,10 @@ async function ensureTablesExist() {
       tot_bl INTEGER DEFAULT 0, ft_20 INTEGER DEFAULT 0,
       ft_40 INTEGER DEFAULT 0, cbm REAL DEFAULT 0, weight_kg REAL DEFAULT 0,
       remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
-    )`, () => {});
+    )`);
 
     // ── Sea Export Jobs ────────────────────────────────
-    db.run(`CREATE TABLE IF NOT EXISTS sea_export_jobs (
+    await dbRun(`CREATE TABLE IF NOT EXISTS sea_export_jobs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT,
       job_status TEXT DEFAULT 'Pending', branch TEXT,
@@ -289,10 +289,10 @@ async function ensureTablesExist() {
       tot_bl INTEGER DEFAULT 0, ft_20 INTEGER DEFAULT 0,
       ft_40 INTEGER DEFAULT 0, cbm REAL DEFAULT 0, weight_kg REAL DEFAULT 0,
       remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
-    )`, () => {});
+    )`);
 
     // ── Air Import Jobs ────────────────────────────────
-    db.run(`CREATE TABLE IF NOT EXISTS air_import_jobs (
+    await dbRun(`CREATE TABLE IF NOT EXISTS air_import_jobs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT,
       job_status TEXT DEFAULT 'Pending', branch TEXT,
@@ -304,10 +304,10 @@ async function ensureTablesExist() {
       customer_id INTEGER, customer_name TEXT, sales_person TEXT,
       cs_executive TEXT, agent TEXT, service_category TEXT,
       remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
-    )`, () => {});
+    )`);
 
     // ── Air Export Jobs ────────────────────────────────
-    db.run(`CREATE TABLE IF NOT EXISTS air_export_jobs (
+    await dbRun(`CREATE TABLE IF NOT EXISTS air_export_jobs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT,
       job_status TEXT DEFAULT 'Pending', branch TEXT,
@@ -319,10 +319,10 @@ async function ensureTablesExist() {
       customer_id INTEGER, customer_name TEXT, sales_person TEXT,
       cs_executive TEXT, agent TEXT, service_category TEXT,
       remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
-    )`, () => {});
+    )`);
 
     // ── Transshipment Jobs ─────────────────────────────
-    db.run(`CREATE TABLE IF NOT EXISTS transshipment_jobs (
+    await dbRun(`CREATE TABLE IF NOT EXISTS transshipment_jobs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       job_no TEXT, job_type TEXT, job_date TEXT,
       job_status TEXT DEFAULT 'Pending', branch TEXT,
@@ -333,20 +333,20 @@ async function ensureTablesExist() {
       customer_id INTEGER, customer_name TEXT, agent TEXT,
       tot_bl INTEGER DEFAULT 0, remarks TEXT,
       user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
-    )`, () => {});
+    )`);
 
     // ── Liner Schedules ────────────────────────────────
-    db.run(`CREATE TABLE IF NOT EXISTS liner_schedules (
+    await dbRun(`CREATE TABLE IF NOT EXISTS liner_schedules (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       liner_name TEXT, vessel_name TEXT, voyage TEXT,
       port_of_loading TEXT, port_of_discharge TEXT,
       eta TEXT, etd TEXT, cutoff_date TEXT,
       frequency TEXT, service_route TEXT, status TEXT DEFAULT 'Active',
       remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
-    )`, () => {});
+    )`);
 
     // ── C & F Jobs ─────────────────────────────────────
-    db.run(`CREATE TABLE IF NOT EXISTS cf_jobs (
+    await dbRun(`CREATE TABLE IF NOT EXISTS cf_jobs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       job_no TEXT, job_type TEXT, job_date TEXT,
       job_status TEXT DEFAULT 'Pending', branch TEXT,
@@ -357,30 +357,40 @@ async function ensureTablesExist() {
       weight_kg REAL DEFAULT 0, delivery_date TEXT,
       customer_id INTEGER, customer_name TEXT,
       remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
-    )`, () => {});
+    )`);
 
     // ── Other Jobs ─────────────────────────────────────
-    db.run(`CREATE TABLE IF NOT EXISTS other_jobs (
+    await dbRun(`CREATE TABLE IF NOT EXISTS other_jobs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       job_no TEXT, job_type TEXT, job_date TEXT,
       job_status TEXT DEFAULT 'Pending', branch TEXT,
       description TEXT, customer_id INTEGER, customer_name TEXT,
       sales_person TEXT, amount REAL DEFAULT 0,
       remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now'))
-    )`, () => {});
+    )`);
 
-    console.log('[DB] Ensured logistics tables exist.');
+    console.log('[DB] Ensured all logistics tables exist.');
   } catch (err) {
     console.error('[DB] Error ensuring tables:', err.message);
   }
 }
-// Ensure tables are ready before starting server
+// Ensure tables are ready BEFORE starting server
 (async () => {
   try {
     await ensureTablesExist();
-    console.log('[DB] All tables ensured.');
+    console.log('[DB] All tables ensured. Starting server...');
+    app.listen(PORT, () => {
+      console.log('');
+      console.log('========================================');
+      console.log('  USSeaCargo ERP Server v3.0');
+      console.log('  Port: ' + PORT);
+      console.log('  Currency: AED (UAE Dirham)');
+      console.log('  JWT: ' + JWT_SECRET.substring(0, 10) + '...');
+      console.log('========================================');
+    });
   } catch (err) {
     console.error('[DB] Failed to ensure tables:', err.message);
+    process.exit(1);
   }
 })();
 
@@ -1300,15 +1310,4 @@ try {
 app.use((err, req, res, next) => {
   console.error('[Error]', err.stack || err.message);
   res.status(500).json({ success: false, message: err.message || 'Internal server error' });
-});
-
-// ── Start ───────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log('');
-  console.log('========================================');
-  console.log('  USSeaCargo ERP Server v3.0');
-  console.log('  Port: ' + PORT);
-  console.log('  Currency: AED (UAE Dirham)');
-  console.log('  JWT: ' + JWT_SECRET.substring(0, 10) + '...');
-  console.log('========================================');
 });
