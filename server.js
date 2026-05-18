@@ -208,17 +208,18 @@ app.post('/api/auth/register', asyncHandler(async (req, res) => {
     [email, hashedPassword, full_name || null, phone || null, company || null, now]
   );
   const token = jwtSign({ id: result.id, email, role: 'user', subscription_plan: 'trial' }, JWT_SECRET);
-  res.status(201).json({ message: 'User registered successfully', token, user_id: result.id });
+  res.status(201).json({ success: true, message: 'User registered successfully', token, user: { id: result.id, email, full_name: full_name || email, role: 'user', subscription_plan: 'trial' } });
 }));
 
 /** POST /api/auth/login */
 app.post('/api/auth/login', asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
+  const { email, username, password } = req.body;
+  const loginId = email || username;
+  if (!loginId || !password) {
+    return res.status(400).json({ error: 'Email/username and password are required' });
   }
   const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
-  const rows = await dbAll('SELECT * FROM users WHERE email = ? AND password = ?', [email, hashedPassword]);
+  const rows = await dbAll('SELECT * FROM users WHERE email = ? AND password = ?', [loginId, hashedPassword]);
   if (rows.length === 0) {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
@@ -228,6 +229,7 @@ app.post('/api/auth/login', asyncHandler(async (req, res) => {
   }
   const token = jwtSign({ id: user.id, email: user.email, role: user.role, subscription_plan: user.subscription_plan }, JWT_SECRET);
   res.json({
+    success: true,
     token,
     user: {
       id: user.id,
@@ -257,41 +259,41 @@ app.post('/api/auth/forgot-password', asyncHandler(async (req, res) => {
     'UPDATE users SET reset_code = ?, reset_code_expires = ? WHERE email = ?',
     [resetCode, new Date(Date.now() + 3600000).toISOString(), email]
   );
-  res.json({ message: 'Reset code sent', reset_code: resetCode });
+  res.json({ success: true, message: 'Reset code sent', data: { resetCode } });
 }));
 
 /** POST /api/auth/reset-password */
 app.post('/api/auth/reset-password', asyncHandler(async (req, res) => {
   const { email, code, new_password } = req.body;
   if (!email || !code || !new_password) {
-    return res.status(400).json({ error: 'Email, code, and new password are required' });
+    return res.status(400).json({ success: false, message: 'Email, code, and new password are required' });
   }
   const rows = await dbAll('SELECT id, reset_code, reset_code_expires FROM users WHERE email = ?', [email]);
   if (rows.length === 0) {
-    return res.status(404).json({ error: 'Email not found' });
+    return res.status(404).json({ success: false, message: 'Email not found' });
   }
   const user = rows[0];
   if (user.reset_code !== code) {
-    return res.status(400).json({ error: 'Invalid reset code' });
+    return res.status(400).json({ success: false, message: 'Invalid reset code' });
   }
   if (user.reset_code_expires && new Date(user.reset_code_expires) < new Date()) {
-    return res.status(400).json({ error: 'Reset code has expired' });
+    return res.status(400).json({ success: false, message: 'Reset code has expired' });
   }
   const hashedPassword = crypto.createHash('sha256').update(new_password).digest('hex');
   await dbRun(
     "UPDATE users SET password = ?, reset_code = NULL, reset_code_expires = NULL WHERE email = ?",
     [hashedPassword, email]
   );
-  res.json({ message: 'Password reset successfully' });
+  res.json({ success: true, message: 'Password reset successfully' });
 }));
 
 /** GET /api/auth/me */
 app.get('/api/auth/me', authMiddleware, asyncHandler(async (req, res) => {
   const rows = await dbAll('SELECT id, email, full_name, phone, company, role, status, subscription_plan, subscription_expires, created_at FROM users WHERE id = ?', [req.user.id]);
   if (rows.length === 0) {
-    return res.status(404).json({ error: 'User not found' });
+    return res.status(404).json({ success: false, message: 'User not found' });
   }
-  res.json({ user: rows[0] });
+  res.json({ success: true, data: rows[0] });
 }));
 
 // =============================================================================
@@ -316,14 +318,14 @@ function generateCrudRoutes(routePath, tableName, columns, searchableCols = []) 
     sql += ` LIMIT ? OFFSET ?`;
     params.push(parseInt(limit) || 50, parseInt(offset) || 0);
     const rows = await dbAll(sql, params);
-    res.json({ data: rows });
+    res.json({ success: true, data: rows });
   }));
 
   // Get single by id
   app.get(`/api/${routePath}/:id`, authMiddleware, asyncHandler(async (req, res) => {
     const rows = await dbAll(`SELECT * FROM ${tableName} WHERE ${pk} = ?`, [req.params.id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
-    res.json({ data: rows[0] });
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Not found' });
+    res.json({ success: true, data: rows[0] });
   }));
 
   // Create
@@ -336,26 +338,28 @@ function generateCrudRoutes(routePath, tableName, columns, searchableCols = []) 
       `INSERT INTO ${tableName} (${colNames}) VALUES (${placeholders})`,
       values
     );
-    res.status(201).json({ message: 'Created successfully', id: result.id });
+    const newRow = await dbAll(`SELECT * FROM ${tableName} WHERE ${pk} = ?`, [result.id]);
+    res.status(201).json({ success: true, message: 'Created successfully', data: newRow[0] || { id: result.id } });
   }));
 
   // Update
   app.put(`/api/${routePath}/:id`, authMiddleware, asyncHandler(async (req, res) => {
     const updatableCols = columns.filter(c => c !== pk && req.body[c] !== undefined);
     if (updatableCols.length === 0) {
-      return res.status(400).json({ error: 'No fields to update' });
+      return res.status(400).json({ success: false, message: 'No fields to update' });
     }
     const setClause = updatableCols.map(c => `${c} = ?`).join(', ');
     const values = updatableCols.map(col => req.body[col]);
     values.push(req.params.id);
     await dbRun(`UPDATE ${tableName} SET ${setClause} WHERE ${pk} = ?`, values);
-    res.json({ message: 'Updated successfully' });
+    const updatedRow = await dbAll(`SELECT * FROM ${tableName} WHERE ${pk} = ?`, [req.params.id]);
+    res.json({ success: true, message: 'Updated successfully', data: updatedRow[0] || {} });
   }));
 
   // Delete
   app.delete(`/api/${routePath}/:id`, authMiddleware, asyncHandler(async (req, res) => {
     await dbRun(`DELETE FROM ${tableName} WHERE ${pk} = ?`, [req.params.id]);
-    res.json({ message: 'Deleted successfully' });
+    res.json({ success: true, message: 'Deleted successfully' });
   }));
 }
 
@@ -481,7 +485,7 @@ generateCrudRoutes('shipping-expenses', 'shipping_expenses', [
 
 app.get('/api/invoices/:id/items', authMiddleware, asyncHandler(async (req, res) => {
   const rows = await dbAll('SELECT * FROM invoice_items WHERE invoice_id = ?', [req.params.id]);
-  res.json({ data: rows });
+  res.json({ success: true, data: rows });
 }));
 
 app.post('/api/invoices/:id/items', authMiddleware, asyncHandler(async (req, res) => {
@@ -490,7 +494,8 @@ app.post('/api/invoices/:id/items', authMiddleware, asyncHandler(async (req, res
     'INSERT INTO invoice_items (invoice_id, description, quantity, unit, rate, amount) VALUES (?, ?, ?, ?, ?, ?)',
     [req.params.id, description, quantity, unit, rate, amount]
   );
-  res.status(201).json({ message: 'Item added', id: result.id });
+  const newRow = await dbAll('SELECT * FROM invoice_items WHERE id = ?', [result.id]);
+  res.status(201).json({ success: true, message: 'Item added', data: newRow[0] || { id: result.id } });
 }));
 
 app.put('/api/invoice-items/:id', authMiddleware, asyncHandler(async (req, res) => {
@@ -499,12 +504,13 @@ app.put('/api/invoice-items/:id', authMiddleware, asyncHandler(async (req, res) 
     'UPDATE invoice_items SET description = ?, quantity = ?, unit = ?, rate = ?, amount = ? WHERE id = ?',
     [description, quantity, unit, rate, amount, req.params.id]
   );
-  res.json({ message: 'Item updated' });
+  const updatedRow = await dbAll('SELECT * FROM invoice_items WHERE id = ?', [req.params.id]);
+  res.json({ success: true, message: 'Item updated', data: updatedRow[0] || {} });
 }));
 
 app.delete('/api/invoice-items/:id', authMiddleware, asyncHandler(async (req, res) => {
   await dbRun('DELETE FROM invoice_items WHERE id = ?', [req.params.id]);
-  res.json({ message: 'Item deleted' });
+  res.json({ success: true, message: 'Item deleted' });
 }));
 
 // =============================================================================
@@ -513,7 +519,7 @@ app.delete('/api/invoice-items/:id', authMiddleware, asyncHandler(async (req, re
 
 app.get('/api/journal-entries/:id/lines', authMiddleware, asyncHandler(async (req, res) => {
   const rows = await dbAll('SELECT * FROM journal_entry_lines WHERE journal_entry_id = ?', [req.params.id]);
-  res.json({ data: rows });
+  res.json({ success: true, data: rows });
 }));
 
 app.post('/api/journal-entries/:id/lines', authMiddleware, asyncHandler(async (req, res) => {
@@ -522,7 +528,8 @@ app.post('/api/journal-entries/:id/lines', authMiddleware, asyncHandler(async (r
     'INSERT INTO journal_entry_lines (journal_entry_id, account_id, account_name, debit, credit, description) VALUES (?, ?, ?, ?, ?, ?)',
     [req.params.id, account_id, account_name, debit || 0, credit || 0, description]
   );
-  res.status(201).json({ message: 'Line added', id: result.id });
+  const newRow = await dbAll('SELECT * FROM journal_entry_lines WHERE id = ?', [result.id]);
+  res.status(201).json({ success: true, message: 'Line added', data: newRow[0] || { id: result.id } });
 }));
 
 app.put('/api/journal-entry-lines/:id', authMiddleware, asyncHandler(async (req, res) => {
@@ -531,12 +538,13 @@ app.put('/api/journal-entry-lines/:id', authMiddleware, asyncHandler(async (req,
     'UPDATE journal_entry_lines SET account_id = ?, account_name = ?, debit = ?, credit = ?, description = ? WHERE id = ?',
     [account_id, account_name, debit, credit, description, req.params.id]
   );
-  res.json({ message: 'Line updated' });
+  const updatedRow = await dbAll('SELECT * FROM journal_entry_lines WHERE id = ?', [req.params.id]);
+  res.json({ success: true, message: 'Line updated', data: updatedRow[0] || {} });
 }));
 
 app.delete('/api/journal-entry-lines/:id', authMiddleware, asyncHandler(async (req, res) => {
   await dbRun('DELETE FROM journal_entry_lines WHERE id = ?', [req.params.id]);
-  res.json({ message: 'Line deleted' });
+  res.json({ success: true, message: 'Line deleted' });
 }));
 
 // =============================================================================
@@ -555,7 +563,7 @@ app.get('/api/admin/users', authMiddleware, adminMiddleware, asyncHandler(async 
   sql += ' ORDER BY id DESC LIMIT ? OFFSET ?';
   params.push(parseInt(limit) || 50, parseInt(offset) || 0);
   const rows = await dbAll(sql, params);
-  res.json({ data: rows });
+  res.json({ success: true, data: rows });
 }));
 
 app.put('/api/admin/users/:id', authMiddleware, adminMiddleware, asyncHandler(async (req, res) => {
@@ -567,11 +575,11 @@ app.put('/api/admin/users/:id', authMiddleware, adminMiddleware, asyncHandler(as
   if (subscription_expires !== undefined) { updates.push('subscription_expires = ?'); values.push(subscription_expires); }
   if (role !== undefined) { updates.push('role = ?'); values.push(role); }
   if (updates.length === 0) {
-    return res.status(400).json({ error: 'No fields to update' });
+    return res.status(400).json({ success: false, message: 'No fields to update' });
   }
   values.push(req.params.id);
   await dbRun(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
-  res.json({ message: 'User updated successfully' });
+  res.json({ success: true, message: 'User updated successfully' });
 }));
 
 app.get('/api/admin/dashboard', authMiddleware, adminMiddleware, asyncHandler(async (req, res) => {
@@ -580,10 +588,13 @@ app.get('/api/admin/dashboard', authMiddleware, adminMiddleware, asyncHandler(as
   const trialUsers = await dbAll("SELECT COUNT(*) as count FROM users WHERE subscription_plan = 'trial'");
   const paidUsers = await dbAll("SELECT COUNT(*) as count FROM users WHERE subscription_plan IN ('basic', 'premium', 'enterprise')");
   res.json({
-    total_users: userCount[0]?.count || 0,
-    active_users: activeUsers[0]?.count || 0,
-    trial_users: trialUsers[0]?.count || 0,
-    paid_users: paidUsers[0]?.count || 0
+    success: true,
+    data: {
+      total_users: userCount[0]?.count || 0,
+      active_users: activeUsers[0]?.count || 0,
+      trial_users: trialUsers[0]?.count || 0,
+      paid_users: paidUsers[0]?.count || 0
+    }
   });
 }));
 
@@ -620,7 +631,7 @@ app.get('/api/dashboard/stats', authMiddleware, asyncHandler(async (req, res) =>
   stats.total_pending = invoicePending[0]?.total || 0;
   stats.total_po_value = poTotal[0]?.total || 0;
 
-  res.json(stats);
+  res.json({ success: true, data: stats });
 }));
 
 app.get('/api/dashboard/recent', authMiddleware, asyncHandler(async (req, res) => {
@@ -633,7 +644,7 @@ app.get('/api/dashboard/recent', authMiddleware, asyncHandler(async (req, res) =
     sea_export_jobs: await dbAll(`SELECT * FROM sea_export_jobs ORDER BY id DESC LIMIT ${limit}`),
     quotations: await dbAll(`SELECT * FROM quotations ORDER BY id DESC LIMIT ${limit}`),
   };
-  res.json(recent);
+  res.json({ success: true, data: recent });
 }));
 
 // =============================================================================
