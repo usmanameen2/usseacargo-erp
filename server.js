@@ -959,8 +959,19 @@ adminRouter.post('/users/:id/assign-plan', async (req, res) => {
 
 app.use('/api/admin', adminRouter);
 
+// ── camelCase to snake_case converter ─────────────────
+function toSnakeCase(str) {
+  return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+}
+function convertBodyKeys(body) {
+  const converted = {};
+  for (const [key, value] of Object.entries(body)) {
+    converted[toSnakeCase(key)] = value;
+  }
+  return converted;
+}
+
 // ── Logistics Routes ────────────────────────────────
-// Generic CRUD for logistics tables (no user_id filter for simplicity)
 function createLogisticsRoutes(table, columns, searchFields) {
   const router = express.Router();
   router.use(authenticateToken);
@@ -998,7 +1009,8 @@ function createLogisticsRoutes(table, columns, searchFields) {
 
   router.post('/', async (req, res) => {
     try {
-      const body = req.body;
+      // Convert camelCase keys to snake_case (jobNo → job_no)
+      const body = convertBodyKeys(req.body);
       const keys = Object.keys(body).filter(k => k !== 'id' && k !== 'created_at');
       if (keys.length === 0) return res.status(400).json({ success: false, message: 'No data provided' });
       const cols = keys.join(', ');
@@ -1007,13 +1019,15 @@ function createLogisticsRoutes(table, columns, searchFields) {
       const result = await dbRun(`INSERT INTO ${table} (${cols}) VALUES (${placeholders})`, values);
       res.status(201).json({ success: true, data: { id: result.lastID, ...body }, message: 'Created' });
     } catch (err) {
+      console.error('[Logistics POST Error]', err.message);
       res.status(500).json({ success: false, message: err.message });
     }
   });
 
   router.put('/:id', async (req, res) => {
     try {
-      const body = req.body;
+      // Convert camelCase keys to snake_case
+      const body = convertBodyKeys(req.body);
       const keys = Object.keys(body).filter(k => k !== 'id' && k !== 'created_at');
       if (keys.length === 0) return res.status(400).json({ success: false, message: 'No data provided' });
       const setClause = keys.map(k => `${k} = ?`).join(', ');
@@ -1021,6 +1035,7 @@ function createLogisticsRoutes(table, columns, searchFields) {
       await dbRun(`UPDATE ${table} SET ${setClause} WHERE id = ?`, [...values, req.params.id]);
       res.json({ success: true, message: 'Updated' });
     } catch (err) {
+      console.error('[Logistics PUT Error]', err.message);
       res.status(500).json({ success: false, message: err.message });
     }
   });
