@@ -12,12 +12,12 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'usseacargo-secret-key-2026';
 
-// ── Middleware ──────────────────────────────────────
+// -- Middleware --------------------------------------
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// ── File Upload ─────────────────────────────────────
+// -- File Upload ------------------------------------
 const uploadDir = path.join(__dirname, 'public', 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 const storage = multer.diskStorage({
@@ -30,7 +30,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 app.use('/uploads', express.static(uploadDir));
 
-// ── Database (Embedded Schema) ──────────────────────
+// -- Database (Embedded Schema) ----------------------
 const DB_PATH = path.join(__dirname, 'database', 'erp.db');
 const dbDir = path.join(__dirname, 'database');
 if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
@@ -208,82 +208,101 @@ function getDb() {
   return dbInstance;
 }
 
-// Database helpers with 5-second timeout
-function withTimeout(promise, ms = 5000) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('Database timeout')), ms))
-  ]);
-}
-
+// Simple, reliable database helpers (NO timeout wrapper)
 function dbRun(sql, params = []) {
-  return withTimeout(new Promise((resolve, reject) => {
-    try {
-      const db = getDb();
-      db.run(sql, params, function(err) {
-        if (err) reject(err);
-        else resolve({ lastID: this.lastID, changes: this.changes });
-      });
-    } catch (e) { reject(e); }
-  }));
+  return new Promise((resolve, reject) => {
+    const db = getDb();
+    db.run(sql, params, function(err) {
+      if (err) reject(err);
+      else resolve({ lastID: this.lastID, changes: this.changes });
+    });
+  });
 }
 
 function dbGet(sql, params = []) {
-  return withTimeout(new Promise((resolve, reject) => {
-    try {
-      const db = getDb();
-      db.get(sql, params, (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
-      });
-    } catch (e) { reject(e); }
-  }));
+  return new Promise((resolve, reject) => {
+    const db = getDb();
+    db.get(sql, params, (err, row) => {
+      if (err) reject(err);
+      else resolve(row);
+    });
+  });
 }
 
 function dbAll(sql, params = []) {
-  return withTimeout(new Promise((resolve, reject) => {
-    try {
-      const db = getDb();
-      db.all(sql, params, (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      });
-    } catch (e) { reject(e); }
-  }));
+  return new Promise((resolve, reject) => {
+    const db = getDb();
+    db.all(sql, params, (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
+  });
 }
 
-// Ensure all tables exist (runs in background, non-blocking)
+// Simple sequential table creation - no Promise.all, no fire-and-forget
 async function ensureTablesExist() {
   try {
-    // Add subscription columns to existing users table (fire and forget)
-    dbRun(`ALTER TABLE users ADD COLUMN subscription_plan TEXT DEFAULT 'trial'`).catch(() => {});
-    dbRun(`ALTER TABLE users ADD COLUMN subscription_expiry TEXT`).catch(() => {});
-    dbRun(`ALTER TABLE users ADD COLUMN subscription_status TEXT DEFAULT 'active'`).catch(() => {});
-    
-    // Add password_reset table
-    dbRun(`CREATE TABLE IF NOT EXISTS password_reset (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, reset_code TEXT, expires_at TEXT, used INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {});
-    
-    // Create all logistics tables in parallel
-    await Promise.all([
-      dbRun(`CREATE TABLE IF NOT EXISTS companies (id INTEGER PRIMARY KEY AUTOINCREMENT, company_name TEXT NOT NULL, contact_email TEXT, contact_phone TEXT, contact_person TEXT, industry TEXT, employee_count TEXT, status TEXT DEFAULT 'active', created_by_user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
-      dbRun(`CREATE TABLE IF NOT EXISTS signup_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, company_name TEXT, email TEXT, full_name TEXT, ip_address TEXT, user_agent TEXT, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
-      dbRun(`CREATE TABLE IF NOT EXISTS sea_import_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, vessel TEXT, voyage TEXT, eta TEXT, etd TEXT, liner TEXT, rotation_no TEXT, mbl_no TEXT, hbl_no TEXT, no_bl TEXT, shipper TEXT, consignee TEXT, port_of_loading TEXT, port_of_discharge TEXT, container_no TEXT, container_type TEXT, customer_id INTEGER, customer_name TEXT, sales_person TEXT, cs_executive TEXT, documentation TEXT, agent TEXT, service_category TEXT, cargo_type TEXT, place_of_delivery TEXT, tot_bl INTEGER DEFAULT 0, ft_20 INTEGER DEFAULT 0, ft_40 INTEGER DEFAULT 0, cbm REAL DEFAULT 0, weight_kg REAL DEFAULT 0, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
-      dbRun(`CREATE TABLE IF NOT EXISTS sea_export_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, vessel TEXT, voyage TEXT, eta TEXT, sob TEXT, liner TEXT, pod_agent TEXT, mbl_type TEXT, mbl_no TEXT, pod TEXT, no_bl TEXT, hbl_no TEXT, shipper TEXT, port_of_loading TEXT, container_no TEXT, container_type TEXT, customer_id INTEGER, customer_name TEXT, sales_person TEXT, cs_executive TEXT, doc_by TEXT, liner_ref TEXT, service_category TEXT, cargo_type TEXT, place_of_delivery TEXT, tot_bl INTEGER DEFAULT 0, ft_20 INTEGER DEFAULT 0, ft_40 INTEGER DEFAULT 0, cbm REAL DEFAULT 0, weight_kg REAL DEFAULT 0, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
-      dbRun(`CREATE TABLE IF NOT EXISTS air_import_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, flight_no TEXT, airline TEXT, eta TEXT, etd TEXT, mawb_no TEXT, hawb_no TEXT, shipper TEXT, consignee TEXT, airport_of_origin TEXT, airport_of_destination TEXT, no_pcs INTEGER DEFAULT 0, weight_kg REAL DEFAULT 0, chargeable_weight REAL DEFAULT 0, cargo_type TEXT, customer_id INTEGER, customer_name TEXT, sales_person TEXT, cs_executive TEXT, agent TEXT, service_category TEXT, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
-      dbRun(`CREATE TABLE IF NOT EXISTS air_export_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, flight_no TEXT, airline TEXT, eta TEXT, etd TEXT, mawb_no TEXT, hawb_no TEXT, shipper TEXT, consignee TEXT, airport_of_origin TEXT, airport_of_destination TEXT, no_pcs INTEGER DEFAULT 0, weight_kg REAL DEFAULT 0, chargeable_weight REAL DEFAULT 0, cargo_type TEXT, customer_id INTEGER, customer_name TEXT, sales_person TEXT, cs_executive TEXT, agent TEXT, service_category TEXT, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
-      dbRun(`CREATE TABLE IF NOT EXISTS transshipment_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, vessel TEXT, voyage TEXT, eta TEXT, etd TEXT, liner TEXT, mbl_no TEXT, hbl_no TEXT, shipper TEXT, consignee TEXT, port_of_origin TEXT, port_of_tranship TEXT, port_of_destination TEXT, container_no TEXT, container_type TEXT, customer_id INTEGER, customer_name TEXT, agent TEXT, tot_bl INTEGER DEFAULT 0, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
-      dbRun(`CREATE TABLE IF NOT EXISTS liner_schedules (id INTEGER PRIMARY KEY AUTOINCREMENT, liner_name TEXT, vessel_name TEXT, voyage TEXT, port_of_loading TEXT, port_of_discharge TEXT, eta TEXT, etd TEXT, cutoff_date TEXT, frequency TEXT, service_route TEXT, status TEXT DEFAULT 'Active', remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
-      dbRun(`CREATE TABLE IF NOT EXISTS cf_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, be_no TEXT, be_date TEXT, importer TEXT, cha TEXT, port TEXT, igr_no TEXT, igr_date TEXT, assess_value REAL DEFAULT 0, duty_amount REAL DEFAULT 0, container_no TEXT, no_of_packages INTEGER DEFAULT 0, weight_kg REAL DEFAULT 0, delivery_date TEXT, customer_id INTEGER, customer_name TEXT, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
-      dbRun(`CREATE TABLE IF NOT EXISTS other_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, description TEXT, customer_id INTEGER, customer_name TEXT, sales_person TEXT, amount REAL DEFAULT 0, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`).catch(() => {}),
-    ]);
+    // Add subscription columns to existing users table (ignore errors if already exist)
+    try { await dbRun(`ALTER TABLE users ADD COLUMN subscription_plan TEXT DEFAULT 'trial'`); } catch(e) {}
+    try { await dbRun(`ALTER TABLE users ADD COLUMN subscription_expiry TEXT`); } catch(e) {}
+    try { await dbRun(`ALTER TABLE users ADD COLUMN subscription_status TEXT DEFAULT 'active'`); } catch(e) {}
+
+    // Create password_reset table
+    try {
+      await dbRun(`CREATE TABLE IF NOT EXISTS password_reset (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, reset_code TEXT, expires_at TEXT, used INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')))`);
+    } catch(e) {}
+
+    // Create companies table
+    try {
+      await dbRun(`CREATE TABLE IF NOT EXISTS companies (id INTEGER PRIMARY KEY AUTOINCREMENT, company_name TEXT NOT NULL, contact_email TEXT, contact_phone TEXT, contact_person TEXT, industry TEXT, employee_count TEXT, status TEXT DEFAULT 'active', created_by_user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`);
+    } catch(e) {}
+
+    // Create signup_log table
+    try {
+      await dbRun(`CREATE TABLE IF NOT EXISTS signup_log (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, company_name TEXT, email TEXT, full_name TEXT, ip_address TEXT, user_agent TEXT, created_at TEXT DEFAULT (datetime('now')))`);
+    } catch(e) {}
+
+    // Create logistics tables one at a time
+    try {
+      await dbRun(`CREATE TABLE IF NOT EXISTS sea_import_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, vessel TEXT, voyage TEXT, eta TEXT, etd TEXT, liner TEXT, rotation_no TEXT, mbl_no TEXT, hbl_no TEXT, no_bl TEXT, shipper TEXT, consignee TEXT, port_of_loading TEXT, port_of_discharge TEXT, container_no TEXT, container_type TEXT, customer_id INTEGER, customer_name TEXT, sales_person TEXT, cs_executive TEXT, documentation TEXT, agent TEXT, service_category TEXT, cargo_type TEXT, place_of_delivery TEXT, tot_bl INTEGER DEFAULT 0, ft_20 INTEGER DEFAULT 0, ft_40 INTEGER DEFAULT 0, cbm REAL DEFAULT 0, weight_kg REAL DEFAULT 0, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`);
+    } catch(e) {}
+
+    try {
+      await dbRun(`CREATE TABLE IF NOT EXISTS sea_export_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, vessel TEXT, voyage TEXT, eta TEXT, sob TEXT, liner TEXT, pod_agent TEXT, mbl_type TEXT, mbl_no TEXT, pod TEXT, no_bl TEXT, hbl_no TEXT, shipper TEXT, port_of_loading TEXT, container_no TEXT, container_type TEXT, customer_id INTEGER, customer_name TEXT, sales_person TEXT, cs_executive TEXT, doc_by TEXT, liner_ref TEXT, service_category TEXT, cargo_type TEXT, place_of_delivery TEXT, tot_bl INTEGER DEFAULT 0, ft_20 INTEGER DEFAULT 0, ft_40 INTEGER DEFAULT 0, cbm REAL DEFAULT 0, weight_kg REAL DEFAULT 0, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`);
+    } catch(e) {}
+
+    try {
+      await dbRun(`CREATE TABLE IF NOT EXISTS air_import_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, flight_no TEXT, airline TEXT, eta TEXT, etd TEXT, mawb_no TEXT, hawb_no TEXT, shipper TEXT, consignee TEXT, airport_of_origin TEXT, airport_of_destination TEXT, no_pcs INTEGER DEFAULT 0, weight_kg REAL DEFAULT 0, chargeable_weight REAL DEFAULT 0, cargo_type TEXT, customer_id INTEGER, customer_name TEXT, sales_person TEXT, cs_executive TEXT, agent TEXT, service_category TEXT, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`);
+    } catch(e) {}
+
+    try {
+      await dbRun(`CREATE TABLE IF NOT EXISTS air_export_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, shipment_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, flight_no TEXT, airline TEXT, eta TEXT, etd TEXT, mawb_no TEXT, hawb_no TEXT, shipper TEXT, consignee TEXT, airport_of_origin TEXT, airport_of_destination TEXT, no_pcs INTEGER DEFAULT 0, weight_kg REAL DEFAULT 0, chargeable_weight REAL DEFAULT 0, cargo_type TEXT, customer_id INTEGER, customer_name TEXT, sales_person TEXT, cs_executive TEXT, agent TEXT, service_category TEXT, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`);
+    } catch(e) {}
+
+    try {
+      await dbRun(`CREATE TABLE IF NOT EXISTS transshipment_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, vessel TEXT, voyage TEXT, eta TEXT, etd TEXT, liner TEXT, mbl_no TEXT, hbl_no TEXT, shipper TEXT, consignee TEXT, port_of_origin TEXT, port_of_tranship TEXT, port_of_destination TEXT, container_no TEXT, container_type TEXT, customer_id INTEGER, customer_name TEXT, agent TEXT, tot_bl INTEGER DEFAULT 0, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`);
+    } catch(e) {}
+
+    try {
+      await dbRun(`CREATE TABLE IF NOT EXISTS liner_schedules (id INTEGER PRIMARY KEY AUTOINCREMENT, liner_name TEXT, vessel_name TEXT, voyage TEXT, port_of_loading TEXT, port_of_discharge TEXT, eta TEXT, etd TEXT, cutoff_date TEXT, frequency TEXT, service_route TEXT, status TEXT DEFAULT 'Active', remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`);
+    } catch(e) {}
+
+    try {
+      await dbRun(`CREATE TABLE IF NOT EXISTS cf_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, be_no TEXT, be_date TEXT, importer TEXT, cha TEXT, port TEXT, igr_no TEXT, igr_date TEXT, assess_value REAL DEFAULT 0, duty_amount REAL DEFAULT 0, container_no TEXT, no_of_packages INTEGER DEFAULT 0, weight_kg REAL DEFAULT 0, delivery_date TEXT, customer_id INTEGER, customer_name TEXT, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`);
+    } catch(e) {}
+
+    try {
+      await dbRun(`CREATE TABLE IF NOT EXISTS other_jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, job_no TEXT, job_type TEXT, job_date TEXT, job_status TEXT DEFAULT 'Pending', branch TEXT, description TEXT, customer_id INTEGER, customer_name TEXT, sales_person TEXT, amount REAL DEFAULT 0, remarks TEXT, user_id INTEGER, created_at TEXT DEFAULT (datetime('now')))`);
+    } catch(e) {}
 
     console.log('[DB] All tables ensured.');
   } catch (err) {
     console.error('[DB] Error ensuring tables:', err.message);
   }
 }
-// ── Start Server ────────────────────────────────────
-// Start listening immediately - don't block on table creation
+
+// -- Start Server ------------------------------------
+// Start listening IMMEDIATELY - don't block on table creation
 app.listen(PORT, () => {
   console.log('');
   console.log('========================================');
@@ -291,16 +310,16 @@ app.listen(PORT, () => {
   console.log('  Port: ' + PORT);
   console.log('  Currency: AED (UAE Dirham)');
   console.log('========================================');
-  
-  // Ensure tables in background (non-blocking)
-  ensureTablesExist().then(() => {
-    console.log('[DB] All tables ensured.');
-  }).catch(err => {
-    console.error('[DB] Error ensuring tables:', err.message);
-  });
 });
 
-// ── AUTH Routes ─────────────────────────────────────
+// Ensure tables in background AFTER server is already listening
+ensureTablesExist().then(() => {
+  console.log('[DB] Background table check complete.');
+}).catch(err => {
+  console.error('[DB] Background table check error:', err.message);
+});
+
+// -- AUTH Routes ------------------------------------
 const authRouter = express.Router();
 
 authRouter.post('/login', async (req, res) => {
@@ -355,22 +374,22 @@ authRouter.post('/login', async (req, res) => {
 
     // BULLETPROOF: Admin always allowed, no matter what
     const isAdmin = user.role === 'admin' || username === 'admin';
-    
+
     if (isAdmin) {
       console.log('[Login] Admin login - all checks bypassed');
     } else {
       // Check if user is blocked
       if (user.is_active === 0) {
-        return res.status(403).json({ 
-          success: false, 
-          message: 'Your account has been blocked. Please contact admin.' 
+        return res.status(403).json({
+          success: false,
+          message: 'Your account has been blocked. Please contact admin.'
         });
       }
       // Check subscription status
       if (user.subscription_status === 'expired') {
-        return res.status(403).json({ 
-          success: false, 
-          message: 'Your subscription has expired. Please contact admin to renew.' 
+        return res.status(403).json({
+          success: false,
+          message: 'Your subscription has expired. Please contact admin to renew.'
         });
       }
       if (user.subscription_expiry) {
@@ -378,9 +397,9 @@ authRouter.post('/login', async (req, res) => {
         const now = new Date();
         if (expiryDate < now) {
           await dbRun("UPDATE users SET subscription_status = 'expired' WHERE id = ?", [user.id]);
-          return res.status(403).json({ 
-            success: false, 
-            message: 'Your subscription has expired on ' + expiryDate.toLocaleDateString() + '. Please contact admin to renew.' 
+          return res.status(403).json({
+            success: false,
+            message: 'Your subscription has expired on ' + expiryDate.toLocaleDateString() + '. Please contact admin to renew.'
           });
         }
       }
@@ -389,9 +408,9 @@ authRouter.post('/login', async (req, res) => {
     await dbRun("UPDATE users SET last_login = datetime('now') WHERE id = ?", [user.id]);
 
     const token = jwt.sign({ userId: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ success: true, data: { token, user: { 
-      id: user.id, username: user.username, email: user.email, 
-      full_name: user.full_name, role: user.role, company_name: user.company_name, 
+    res.json({ success: true, data: { token, user: {
+      id: user.id, username: user.username, email: user.email,
+      full_name: user.full_name, role: user.role, company_name: user.company_name,
       phone: user.phone, avatar_initials: user.avatar_initials,
       subscription_plan: user.subscription_plan,
       subscription_expiry: user.subscription_expiry,
@@ -468,10 +487,10 @@ authRouter.post('/forgot-password', async (req, res) => {
     await dbRun('INSERT INTO password_reset (user_id, reset_code, expires_at) VALUES (?, ?, ?)',
       [user.id, resetCode, expiry.toISOString()]);
     // For now, return code in response (in production, send via email/SMS)
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: 'Reset code generated. Use this code to reset your password.',
-      data: { 
+      data: {
         resetCode,
         expiresIn: '1 hour',
         note: 'In production, this code will be sent to your email/SMS'
@@ -523,7 +542,7 @@ authRouter.put('/password', async (req, res) => {
   }
 });
 
-// ── AUTH Middleware ─────────────────────────────────
+// -- AUTH Middleware --------------------------------
 async function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -545,7 +564,7 @@ async function requireAdmin(req, res, next) {
   next();
 }
 
-// ── Generic CRUD Route Generator ────────────────────
+// -- Generic CRUD Route Generator -------------------
 function createCrudRoutes(table, columns, searchFields = []) {
   const router = express.Router();
   const searchCond = searchFields.length ? ' AND (' + searchFields.map(f => f + ' LIKE ?').join(' OR ') + ')' : '';
@@ -634,10 +653,10 @@ function createCrudRoutes(table, columns, searchFields = []) {
   return router;
 }
 
-// ── Mount All Routes ────────────────────────────────
+// -- Mount All Routes -------------------------------
 app.use('/api/auth', authRouter);
 
-// ── Admin Routes ────────────────────────────────────
+// -- Admin Routes -----------------------------------
 const adminRouter = express.Router();
 adminRouter.use(authenticateToken);
 adminRouter.use(requireAdmin);
@@ -727,7 +746,7 @@ adminRouter.put('/companies/:id/status', async (req, res) => {
   }
 });
 
-// ── Admin: View Any Company's Data ──────────────────
+// -- Admin: View Any Company's Data -----------------
 // These endpoints let admin see ALL data for any company/user
 
 // Get a specific company's full profile
@@ -865,19 +884,7 @@ adminRouter.post('/users/:id/assign-plan', async (req, res) => {
 
 app.use('/api/admin', adminRouter);
 
-// ── camelCase to snake_case converter ─────────────────
-function toSnakeCase(str) {
-  return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
-}
-function convertBodyKeys(body) {
-  const converted = {};
-  for (const [key, value] of Object.entries(body)) {
-    converted[toSnakeCase(key)] = value;
-  }
-  return converted;
-}
-
-// ── Logistics Routes ────────────────────────────────
+// -- Logistics Routes -------------------------------
 function createLogisticsRoutes(table, columns, searchFields) {
   const router = express.Router();
   router.use(authenticateToken);
@@ -913,10 +920,10 @@ function createLogisticsRoutes(table, columns, searchFields) {
     }
   });
 
+  // Use body keys exactly as sent by frontend (snake_case already)
   router.post('/', async (req, res) => {
     try {
-      // Convert camelCase keys to snake_case (jobNo → job_no)
-      const body = convertBodyKeys(req.body);
+      const body = req.body;
       const keys = Object.keys(body).filter(k => k !== 'id' && k !== 'created_at');
       if (keys.length === 0) return res.status(400).json({ success: false, message: 'No data provided' });
       const cols = keys.join(', ');
@@ -932,8 +939,7 @@ function createLogisticsRoutes(table, columns, searchFields) {
 
   router.put('/:id', async (req, res) => {
     try {
-      // Convert camelCase keys to snake_case
-      const body = convertBodyKeys(req.body);
+      const body = req.body;
       const keys = Object.keys(body).filter(k => k !== 'id' && k !== 'created_at');
       if (keys.length === 0) return res.status(400).json({ success: false, message: 'No data provided' });
       const setClause = keys.map(k => `${k} = ?`).join(', ');
@@ -992,7 +998,7 @@ app.use('/api/shipping-docs', authenticateToken, createCrudRoutes('shipping_docs
 app.use('/api/shipments', authenticateToken, createCrudRoutes('shipments', 'id, booking_number, rotation_number, vessel_name, carrier_scac, shipper, consignee, mode, container_type, container_count, origin, destination, etd, eta, status, incoterm, created_at', ['booking_number', 'vessel_name']));
 app.use('/api/charges', authenticateToken, createCrudRoutes('charges', 'id, charge_code, charge_name, description, calculation_method, rate, applicable_to, currency, created_at', ['charge_code', 'charge_name']));
 
-// ── Route Aliases (frontend compatibility) ──────────
+// -- Route Aliases (frontend compatibility) ---------
 // Sales CRM aliases
 app.use('/api/sales-crm/customers', authenticateToken, createCrudRoutes('customers', 'id, name, company, email, phone, address, city, country, status, notes, total_spent, created_at', ['name', 'company', 'email']));
 app.use('/api/sales-crm/invoices', authenticateToken, createCrudRoutes('invoices', 'id, invoice_number, customer_id, customer_name, date, due_date, items_json, subtotal, tax, total, amount_paid, status, notes, created_at', ['invoice_number', 'customer_name']));
@@ -1020,7 +1026,7 @@ app.get('/api/settings/users-list', authenticateToken, async (req, res) => {
   }
 });
 
-// ── Settings Routes ─────────────────────────────────
+// -- Settings Routes --------------------------------
 const settingsRouter = express.Router();
 settingsRouter.use(authenticateToken);
 
@@ -1069,7 +1075,7 @@ settingsRouter.post('/users', async (req, res) => {
 
 app.use('/api/settings', settingsRouter);
 
-// ── Dashboard ───────────────────────────────────────
+// -- Dashboard --------------------------------------
 app.get('/api/dashboard', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -1090,7 +1096,7 @@ app.get('/api/dashboard', authenticateToken, async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// ── Reports ─────────────────────────────────────────
+// -- Reports ----------------------------------------
 app.get('/api/reports/financial', authenticateToken, async (req, res) => {
   try {
     const revenue = await dbAll("SELECT strftime('%Y-%m', date) as month, COALESCE(SUM(total), 0) as amount FROM invoices WHERE user_id = ? AND status = ? GROUP BY month ORDER BY month DESC LIMIT 12", [req.user.id, 'paid']);
@@ -1105,7 +1111,7 @@ app.get('/api/reports/sales', authenticateToken, async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// ── File Upload ─────────────────────────────────────
+// -- File Upload ------------------------------------
 app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
@@ -1113,7 +1119,7 @@ app.post('/api/upload', authenticateToken, upload.single('file'), (req, res) => 
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 });
 
-// ── Health Check ────────────────────────────────────
+// -- Health Check -----------------------------------
 // Debug endpoint - shows file locations
 app.get('/api/debug/files', (req, res) => {
   const checks = {};
@@ -1159,7 +1165,7 @@ app.get('/api/health', (req, res) => {
   res.json({ success: true, data: { version: '3.0.0', currency: 'AED', timezone: 'Asia/Dubai', status: 'running' } });
 });
 
-// ── Static Frontend ─────────────────────────────────
+// -- Static Frontend --------------------------------
 // Try MANY paths to find frontend files on Hostinger
 const possiblePaths = [
   path.join(__dirname, 'public'),
@@ -1227,7 +1233,7 @@ try {
   });
 }
 
-// ── Error Handler ───────────────────────────────────
+// -- Error Handler ----------------------------------
 app.use((err, req, res, next) => {
   console.error('[Error]', err.stack || err.message);
   res.status(500).json({ success: false, message: err.message || 'Internal server error' });
