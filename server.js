@@ -1,6 +1,6 @@
 /**
- * USSeaCargo ERP v19.2 - Node.js + Express + sqlite3
- * Uses sqlite3 (async) for Hostinger compatibility
+ * USSeaCargo ERP v19.3 - Node.js + Express + sqlite3
+ * Fixed: Static files served correctly, no .htaccess dependency
  */
 const express = require('express');
 const cors = require('cors');
@@ -399,17 +399,27 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   res.json({ success: true, data: { totalUsers: totalUsers.c || 0, activeUsers: activeUsers.c || 0, blockedUsers: blockedUsers.c || 0 } });
 });
 
-// ─── STATIC FILES ────────────────────────────────────────────
+// ─── STATIC FILES (CORRECTED) ───────────────────────────────
 const distPath = path.join(__dirname, 'dist');
-if (fs.existsSync(distPath)) {
-  app.use(express.static(distPath));
-  app.get('*', (req, res) => {
-    if (req.path.startsWith('/api/')) return res.status(404).json({ success: false, message: 'Not found' });
-    res.sendFile(path.join(distPath, 'index.html'));
-  });
-} else {
-  app.get('/', (req, res) => res.json({ status: 'USSeaCargo ERP API', version: '19.2' }));
-}
+
+// Serve static files with correct MIME types
+app.use(express.static(distPath, {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript');
+    if (filePath.endsWith('.css')) res.setHeader('Content-Type', 'text/css');
+    if (filePath.endsWith('.html')) res.setHeader('Content-Type', 'text/html');
+  }
+}));
+
+// API 404 handler
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ success: false, message: 'API endpoint not found: ' + req.path });
+});
+
+// SPA fallback - only for non-file requests
+app.get('*', (req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
+});
 
 // ─── START ───────────────────────────────────────────────────
 app.use((err, req, res, next) => {
@@ -419,7 +429,7 @@ app.use((err, req, res, next) => {
 
 initDb().then(() => {
   app.listen(PORT, () => {
-    console.log(`USSeaCargo ERP v19.2 on port ${PORT}`);
+    console.log(`USSeaCargo ERP v19.3 on port ${PORT}`);
   });
 }).catch(err => {
   console.error('DB init failed:', err);
