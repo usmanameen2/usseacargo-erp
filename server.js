@@ -100,7 +100,8 @@ async function initDb() {
     `CREATE TABLE IF NOT EXISTS shipment_containers (id INTEGER PRIMARY KEY AUTOINCREMENT, shipment_id INTEGER, container_no TEXT, seal_no TEXT, size TEXT, type TEXT, weight REAL DEFAULT 0, status TEXT DEFAULT 'active', created_at TEXT DEFAULT CURRENT_TIMESTAMP)`,
     `CREATE TABLE IF NOT EXISTS shipment_line_items (id INTEGER PRIMARY KEY AUTOINCREMENT, shipment_id INTEGER, product_name TEXT, hs_code TEXT, quantity REAL DEFAULT 0, unit_price REAL DEFAULT 0, total_value REAL DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP)`,
     `CREATE TABLE IF NOT EXISTS ingested_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, doc_type TEXT, file_name TEXT, file_path TEXT, extracted_data TEXT, status TEXT DEFAULT 'pending', uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP)`,
-    `CREATE TABLE IF NOT EXISTS shipping_expenses (id INTEGER PRIMARY KEY AUTOINCREMENT, expense_no TEXT, job_id INTEGER, job_type TEXT, category TEXT, amount REAL DEFAULT 0, currency TEXT DEFAULT 'AED', date TEXT, description TEXT, status TEXT DEFAULT 'active', created_at TEXT DEFAULT CURRENT_TIMESTAMP)`
+    `CREATE TABLE IF NOT EXISTS shipping_expenses (id INTEGER PRIMARY KEY AUTOINCREMENT, expense_no TEXT, job_id INTEGER, job_type TEXT, category TEXT, amount REAL DEFAULT 0, currency TEXT DEFAULT 'AED', date TEXT, description TEXT, status TEXT DEFAULT 'active', created_at TEXT DEFAULT CURRENT_TIMESTAMP)`,
+    `CREATE TABLE IF NOT EXISTS hbl_tracking (id INTEGER PRIMARY KEY AUTOINCREMENT, hbl_no TEXT NOT NULL, customer_name TEXT NOT NULL, customer_company TEXT, container_no TEXT, container_size TEXT, packages_count INTEGER DEFAULT 0, weight REAL DEFAULT 0, description TEXT, pol TEXT, pod TEXT, vessel_name TEXT, eta TEXT, status TEXT DEFAULT 'Active', remarks TEXT, job_no TEXT, mbl_no TEXT, date_received TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)`
   ];
 
   for (const sql of tables) await db.exec(sql);
@@ -180,6 +181,7 @@ const FIELDS = {
   shipment_line_items: ['shipment_id','product_name','hs_code','quantity','unit_price','total_value'],
   ingested_documents: ['doc_type','file_name','file_path','extracted_data','status','uploaded_at'],
   shipping_expenses: ['expense_no','job_id','job_type','category','amount','currency','date','description','status'],
+  hbl_tracking: ['hbl_no','customer_name','customer_company','container_no','container_size','packages_count','weight','description','pol','pod','vessel_name','eta','status','remarks','job_no','mbl_no','date_received'],
 };
 
 // ─── BUILD CRUD ──────────────────────────────────────────────
@@ -267,6 +269,7 @@ const ALIASES = {
   'product-master': 'product_master',
   'ingested-documents': 'ingested_documents',
   'shipping-expenses': 'shipping_expenses',
+  'hbl-tracking': 'hbl_tracking',
 };
 
 function buildAlias(alias, table, fields) {
@@ -397,6 +400,48 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   const activeUsers = await db.get("SELECT COUNT(*) as c FROM users WHERE is_active = 1");
   const blockedUsers = await db.get("SELECT COUNT(*) as c FROM users WHERE is_active = 0");
   res.json({ success: true, data: { totalUsers: totalUsers.c || 0, activeUsers: activeUsers.c || 0, blockedUsers: blockedUsers.c || 0 } });
+});
+
+// ─── HBL CUSTOMER REPORT ─────────────────────────────────────
+app.get('/api/hbl-tracking/customer-report', requireAuth, async (req, res) => {
+  try {
+    const rows = await db.all(`
+      SELECT customer_name, customer_company,
+        COUNT(*) as total_hbls,
+        SUM(packages_count) as total_packages,
+        COUNT(DISTINCT container_no) as total_containers,
+        GROUP_CONCAT(DISTINCT hbl_no) as hbl_list
+      FROM hbl_tracking
+      GROUP BY customer_name
+      ORDER BY total_hbls DESC
+    `);
+    res.json({ success: true, data: rows });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+app.get('/api/hbl-tracking/container-report', requireAuth, async (req, res) => {
+  try {
+    const rows = await db.all(`
+      SELECT container_no, container_size,
+        COUNT(*) as total_hbls,
+        SUM(packages_count) as total_packages,
+        GROUP_CONCAT(DISTINCT customer_name) as customers
+      FROM hbl_tracking
+      WHERE container_no IS NOT NULL AND container_no != ''
+      GROUP BY container_no
+      ORDER BY total_hbls DESC
+    `);
+    res.json({ success: true, data: rows });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+app.get('/api/hbl-tracking/search-by-hbl', requireAuth, async (req, res) => {
+  try {
+    const hblNo = req.query.hbl_no || '';
+    if (!hblNo) return res.status(400).json({ success: false, message: 'hbl_no query required' });
+    const rows = await db.all("SELECT * FROM hbl_tracking WHERE hbl_no LIKE ?", ['%' + hblNo + '%']);
+    res.json({ success: true, data: rows });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
 // ─── STATIC FILES (CORRECTED) ───────────────────────────────
