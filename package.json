@@ -1,18 +1,12 @@
 {
   "name": "usseacargo-erp",
-  "version": "19.0.0",
-  "description": "USSeaCargo Logistics ERP - Node.js Backend",
+  "version": "19.2.0",
+  "description": "USSeaCargo Logistics ERP",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
+  "scripts": { "start": "node server.js" },
   "dependencies": {
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^9.4.3",
+    "sqlite3": "^5.1.6",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.2"
