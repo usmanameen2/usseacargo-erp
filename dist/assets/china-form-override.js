@@ -615,7 +615,7 @@
   }
 
   function getVisibleContainerAnchor() {
-    // Hard-lock container tracker under top shipment summary area (never page bottom).
+    // Keep tracker inside normal layout flow, right below summary row.
     const isChinaPage = (location.hash || "").includes("china-dubai");
     if (!isChinaPage) return null;
 
@@ -623,53 +623,49 @@
     if (!portal) {
       portal = document.createElement("div");
       portal.id = CONTAINERS_PORTAL_ID;
-      portal.style.position = "fixed";
-      portal.style.zIndex = "9991";
-      portal.style.maxHeight = "42vh";
-      portal.style.overflow = "auto";
-      portal.style.pointerEvents = "auto";
-      document.body.appendChild(portal);
+      portal.style.position = "static";
+      portal.style.width = "100%";
+      portal.style.marginTop = "12px";
+      portal.style.marginBottom = "8px";
+      portal.style.zIndex = "auto";
     }
 
     const totalLabels = Array.from(document.querySelectorAll("div,span,strong"))
       .filter((el) => /total\s*:/i.test((el.textContent || "").trim()));
-    const topLabel = totalLabels
-      .map((el) => ({ el, rect: el.getBoundingClientRect() }))
-      .filter((x) => x.rect.width > 80 && x.rect.top > 80 && x.rect.top < 650)
+    const summaryCandidate = totalLabels
+      .map((el) => {
+        let node = el;
+        for (let i = 0; i < 10 && node; i++) {
+          const rect = node.getBoundingClientRect ? node.getBoundingClientRect() : { width: 0, height: 0, top: 0 };
+          if (rect.width > 650 && rect.width < 1800 && rect.height >= 24 && rect.height <= 90 && rect.top > 80 && rect.top < 800) {
+            return { node, rect };
+          }
+          node = node.parentElement;
+        }
+        return null;
+      })
+      .filter(Boolean)
       .sort((a, b) => a.rect.top - b.rect.top)[0];
-    if (topLabel) {
-      let summaryCard = topLabel.el;
-      for (let i = 0; i < 10 && summaryCard; i++) {
-        const rect = summaryCard.getBoundingClientRect ? summaryCard.getBoundingClientRect() : { width: 0, height: 0 };
-        if (rect.width > 700 && rect.height > 28 && rect.height < 140) break;
-        summaryCard = summaryCard.parentElement;
-      }
-      if (summaryCard) {
-        const r = summaryCard.getBoundingClientRect();
-        portal.style.left = `${Math.max(220, Math.floor(r.left))}px`;
-        portal.style.top = `${Math.floor(r.bottom + 10)}px`;
-        portal.style.width = `${Math.max(700, Math.floor(r.width))}px`;
-        portal.style.bottom = "auto";
-        return portal;
-      }
+
+    if (summaryCandidate?.node?.parentElement) {
+      const parent = summaryCandidate.node.parentElement;
+      if (portal.parentNode !== parent) parent.insertBefore(portal, summaryCandidate.node.nextSibling);
+      else if (portal.previousSibling !== summaryCandidate.node) parent.insertBefore(portal, summaryCandidate.node.nextSibling);
+      return portal;
     }
 
-    // secondary anchor: under "No data found" block in shipments area
+    // Secondary anchor: after the visible "No data found" block.
     const noDataNode = Array.from(document.querySelectorAll("div,span,p"))
       .find((el) => ((el.textContent || "").trim().toLowerCase() === "no data found"));
     if (noDataNode) {
       let board = noDataNode.closest("section,article,div");
       for (let i = 0; i < 6 && board; i++) {
-        const rect = board.getBoundingClientRect ? board.getBoundingClientRect() : { width: 0, height: 0 };
-        if (rect.width > 700 && rect.height > 120 && rect.top < 700) break;
+        const rect = board.getBoundingClientRect ? board.getBoundingClientRect() : { width: 0, height: 0, top: 0 };
+        if (rect.width > 650 && rect.width < 1800 && rect.height > 100 && rect.top > 80 && rect.top < 900) break;
         board = board.parentElement;
       }
       if (board) {
-        const r = board.getBoundingClientRect();
-        portal.style.left = `${Math.max(220, Math.floor(r.left))}px`;
-        portal.style.top = `${Math.floor(r.bottom + 10)}px`;
-        portal.style.width = `${Math.max(700, Math.floor(r.width))}px`;
-        portal.style.bottom = "auto";
+        if (portal.parentNode !== board.parentElement) board.parentElement.insertBefore(portal, board.nextSibling);
         return portal;
       }
     }
@@ -677,12 +673,8 @@
     const header = Array.from(document.querySelectorAll("h1,h2,h3,div,span"))
       .find((el) => /china\s*&?\s*dubai\s*shipments/i.test((el.textContent || "").trim()));
     const fallbackParent = header?.closest("section,main,article,div")?.parentElement || document.querySelector("#root");
-    if (!fallbackParent) return portal;
-    const fr = fallbackParent.getBoundingClientRect();
-    portal.style.left = `${Math.max(220, Math.floor(fr.left + 12))}px`;
-    portal.style.top = `${Math.max(260, Math.floor(fr.top + 260))}px`;
-    portal.style.width = `${Math.max(700, Math.floor(fr.width - 24))}px`;
-    portal.style.bottom = "auto";
+    if (!fallbackParent) return null;
+    if (portal.parentNode !== fallbackParent) fallbackParent.appendChild(portal);
     return portal;
   }
 
