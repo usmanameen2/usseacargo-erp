@@ -528,15 +528,20 @@ app.use(express.static(distPath, {
     if (filePath.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript');
     if (filePath.endsWith('.css')) res.setHeader('Content-Type', 'text/css');
     if (filePath.endsWith('.html')) res.setHeader('Content-Type', 'text/html');
-    // Always fetch fresh app shell and override script after deploy
-    if (
+    // Always fetch fresh app shell + core UI bundles after deploy
+    const fileName = path.basename(filePath);
+    const shouldNoCache =
       filePath.endsWith(path.join('dist', 'index.html')) ||
-      filePath.endsWith(path.join('assets', 'china-form-override.js'))
-    ) {
+      filePath.endsWith(path.join('assets', 'china-form-override.js')) ||
+      /^index-.*\.js$/i.test(fileName) ||
+      /^index-.*\.css$/i.test(fileName);
+
+    if (shouldNoCache) {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
       res.setHeader('Surrogate-Control', 'no-store');
+      res.setHeader('Vary', 'Accept-Encoding');
     }
   }
 }));
