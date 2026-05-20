@@ -7,6 +7,7 @@
   const DETAIL_MODAL_ID = "chinaShipmentDetailModal";
   const CONTAINER_BOARD_ID = "chinaContainerManifestBoard";
   const CONTAINERS_SUBMENU_PANEL_ID = "chinaContainersSubmenuPanel";
+  const CHINA_CONTAINERS_INLINE_ID = "chinaContainersInlineSection";
 
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -90,6 +91,16 @@
       .china-containers-submenu-table { width:100%; min-width:980px; border-collapse:collapse; font-size:12px; }
       .china-containers-submenu-table th,.china-containers-submenu-table td { border:1px solid #e2e8f0; padding:8px; text-align:left; }
       .china-containers-submenu-table th { background:#f8fafc; color:#334155; }
+      .china-inline-containers {
+        margin-top: 14px; border:1px solid #dbe3ef; border-radius:12px; background:#fff; overflow:hidden;
+      }
+      .china-inline-containers-head {
+        display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #e6ebf2; font-weight:700; color:#0f172a;
+      }
+      .china-inline-containers-wrap { overflow:auto; }
+      .china-inline-containers-table { width:100%; min-width:1100px; border-collapse:collapse; font-size:12px; }
+      .china-inline-containers-table th,.china-inline-containers-table td { border:1px solid #e2e8f0; padding:8px; text-align:left; }
+      .china-inline-containers-table th { background:#f8fafc; color:#334155; }
     `;
     document.head.appendChild(style);
   }
@@ -341,6 +352,7 @@
         // Stay on China page; refresh panels in-place
         setTimeout(() => {
           renderContainerManifestBoard().catch(() => {});
+          renderInlineContainersTable().catch(() => {});
         }, 250);
       } catch (err) {
         alert(err?.message || "Failed to save shipment.");
@@ -608,6 +620,19 @@
 
   function getVisibleContainerAnchor() { return null; }
 
+  function getSummaryBarElement() {
+    const totalLabel = Array.from(document.querySelectorAll("div,span,strong"))
+      .find((el) => /total\s*:/i.test((el.textContent || "").trim()));
+    if (!totalLabel) return null;
+    let node = totalLabel;
+    for (let i = 0; i < 10 && node; i++) {
+      const rect = node.getBoundingClientRect ? node.getBoundingClientRect() : { width: 0, height: 0 };
+      if (rect.width > 650 && rect.height >= 24 && rect.height <= 100) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
   async function fetchWithAuth(url, options = {}) {
     const token = localStorage.getItem("erp_token");
     if (!token) throw new Error("Login required.");
@@ -702,6 +727,85 @@
     if (panel) panel.remove();
   }
 
+  async function renderInlineContainersTable() {
+    if (!(location.hash || "").includes("china-dubai")) return;
+
+    const summaryBar = getSummaryBarElement();
+    if (!summaryBar || !summaryBar.parentElement) return;
+
+    let section = document.getElementById(CHINA_CONTAINERS_INLINE_ID);
+    if (!section) {
+      section = document.createElement("div");
+      section.id = CHINA_CONTAINERS_INLINE_ID;
+      section.className = "china-inline-containers";
+      section.innerHTML = `
+        <div class="china-inline-containers-head">
+          <span>Containers (Auto from New Shipment)</span>
+          <button type="button" class="cfo-btn" id="refreshInlineContainers">Refresh</button>
+        </div>
+        <div class="china-inline-containers-wrap">
+          <table class="china-inline-containers-table">
+            <thead>
+              <tr>
+                <th>#</th><th>Reference</th><th>Client</th><th>Container No</th><th>Seal No</th>
+                <th>Size</th><th>Type</th><th>Status</th><th>Weight</th><th>Created At</th>
+              </tr>
+            </thead>
+            <tbody id="chinaInlineContainersRows"><tr><td colspan="10">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    if (section.parentNode !== summaryBar.parentElement || section.previousSibling !== summaryBar) {
+      summaryBar.insertAdjacentElement("afterend", section);
+    }
+
+    const tbody = document.getElementById("chinaInlineContainersRows");
+    if (!tbody) return;
+
+    try {
+      const [cjson, sjson] = await Promise.all([
+        fetchWithAuth("/api/china-dubai/containers"),
+        fetchWithAuth("/api/china-dubai/shipments"),
+      ]);
+      const containers = Array.isArray(cjson.data) ? cjson.data : [];
+      const shipments = Array.isArray(sjson.data) ? sjson.data : [];
+      const byId = new Map(shipments.map((s) => [String(s.id), s]));
+
+      if (!containers.length) {
+        tbody.innerHTML = `<tr><td colspan="10">No containers found.</td></tr>`;
+        return;
+      }
+
+      const fmtDate = (v) => {
+        if (!v) return "";
+        const d = new Date(v);
+        if (Number.isNaN(d.getTime())) return String(v);
+        return d.toLocaleString("en-GB");
+      };
+
+      const rows = containers.slice().sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+      tbody.innerHTML = rows.map((c, i) => {
+        const s = byId.get(String(c.shipment_id)) || {};
+        return `<tr>
+          <td>${i + 1}</td>
+          <td>${s.reference || s.shipment_no || ""}</td>
+          <td>${s.client || ""}</td>
+          <td>${c.container_no || ""}</td>
+          <td>${c.seal_no || ""}</td>
+          <td>${c.size || ""}</td>
+          <td>${c.type || ""}</td>
+          <td>${c.status || ""}</td>
+          <td>${Number(c.weight || 0)}</td>
+          <td>${fmtDate(c.created_at)}</td>
+        </tr>`;
+      }).join("");
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="10">${err.message || "Failed to load containers."}</td></tr>`;
+    }
+  }
+
   document.addEventListener("click", async (e) => {
     const viewBtn = e.target.closest("[data-view-row]");
     const detailsBtn = e.target.closest("[data-details-row]");
@@ -737,12 +841,19 @@
 
     const refreshContainersSubmenu = e.target.closest("#refreshContainersSubmenu");
     if (refreshContainersSubmenu) return;
+
+    const refreshInline = e.target.closest("#refreshInlineContainers");
+    if (refreshInline) {
+      await renderInlineContainersTable();
+      return;
+    }
   }, true);
 
   function autoRenderContainersPanel() {
     if (!(location.hash || "").includes("china-dubai")) return;
     const panel = document.getElementById(CONTAINERS_SUBMENU_PANEL_ID);
     if (panel) panel.remove();
+    renderInlineContainersTable().catch(() => {});
   }
 
   setInterval(injectRowActions, 1200);
