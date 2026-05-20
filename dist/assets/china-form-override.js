@@ -614,21 +614,9 @@
   }
 
   function getVisibleContainerAnchor() {
-    // Best anchor: the shipments grid table with "REFERENCE ... ACTIONS"
-    const actionsHeader = Array.from(document.querySelectorAll("th,div,span")).find((el) =>
-      /\bactions\b/i.test((el.textContent || "").trim())
-    );
-    if (actionsHeader) {
-      const rowWrap = actionsHeader.closest("table,div");
-      if (rowWrap) return rowWrap.closest("div") || rowWrap;
-    }
-    const summary = Array.from(document.querySelectorAll("div,span,p")).find((el) =>
-      /\btotal\s*:/i.test((el.textContent || "").trim())
-    );
-    if (summary) return summary.closest("div");
-    const table = document.querySelector("table");
-    if (table) return table.closest("div") || table.parentElement;
-    return getMainBoardRoot();
+    const root = document.querySelector("#root");
+    if (root) return root;
+    return getMainBoardRoot() || document.body;
   }
 
   async function fetchWithAuth(url, options = {}) {
@@ -740,29 +728,32 @@
             <thead>
               <tr>
                 <th>#</th>
-                <th>Shipment ID</th>
-                <th>Reference</th>
-                <th>Container No</th>
-                <th>Seal No</th>
-                <th>Size</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Weight</th>
-                <th>Created At</th>
+                <th>DATE</th>
+                <th>JOB TYPE</th>
+                <th>JOB NO</th>
+                <th>MBL NO</th>
+                <th>VESSEL</th>
+                <th>VOYAGE</th>
+                <th>ETD POL</th>
+                <th>ETA JEA</th>
+                <th>PORT OF LOADING</th>
+                <th>LINER</th>
+                <th>AGENT</th>
+                <th>CONTAINER NO</th>
+                <th>TOT. BL</th>
+                <th>20 FT</th>
+                <th>40 FT</th>
               </tr>
             </thead>
             <tbody id="containersSubmenuRows">
-              <tr><td colspan="10">Loading...</td></tr>
+              <tr><td colspan="16">Loading...</td></tr>
             </tbody>
           </table>
         </div>
       `;
-      // Insert immediately after visible shipment area so user always sees it
-      if (anchor.parentNode) {
-        anchor.parentNode.insertBefore(panel, anchor.nextSibling);
-      } else {
-        document.body.appendChild(panel);
-      }
+      anchor.appendChild(panel);
+    } else if (panel.parentNode !== anchor) {
+      anchor.appendChild(panel);
     }
 
     const tbody = document.getElementById("containersSubmenuRows");
@@ -778,44 +769,72 @@
       const byId = new Map(shipments.map((s) => [String(s.id), s]));
 
       if (!containers.length) {
-        tbody.innerHTML = `<tr><td colspan="10">No containers saved yet.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="16">No containers saved yet.</td></tr>`;
         return;
       }
 
-      // newest first, easier tracking
-      const ordered = containers.slice().sort((a, b) => (b.id || 0) - (a.id || 0));
-      tbody.innerHTML = ordered.map((c, i) => {
-        const ship = byId.get(String(c.shipment_id));
+      const grouped = new Map();
+      for (const c of containers) {
+        const key = String(c.shipment_id || "");
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key).push(c);
+      }
+      const rows = Array.from(grouped.entries())
+        .map(([shipmentId, list]) => {
+          const ship = byId.get(String(shipmentId)) || {};
+          const ft20 = list.filter((r) => String(r.size || "").startsWith("20")).length;
+          const ft40 = list.filter((r) => String(r.size || "").startsWith("40")).length;
+          return { ship, total: list.length, ft20, ft40 };
+        })
+        .sort((a, b) => Number(b.ship.id || 0) - Number(a.ship.id || 0));
+
+      const fmtDate = (v) => {
+        if (!v) return "";
+        const d = new Date(v);
+        if (Number.isNaN(d.getTime())) return String(v);
+        return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase();
+      };
+
+      tbody.innerHTML = rows.map((r, i) => {
+        const s = r.ship;
         return `<tr>
           <td>${i + 1}</td>
-          <td>${c.shipment_id || ""}</td>
-          <td>${ship?.reference || ship?.master_bl_no || ""}</td>
-          <td>${c.container_no || ""}</td>
-          <td>${c.seal_no || ""}</td>
-          <td>${c.size || ""}</td>
-          <td>${c.type || ""}</td>
-          <td>${c.status || ""}</td>
-          <td>${c.weight ?? 0}</td>
-          <td>${c.created_at || ""}</td>
+          <td>${fmtDate(s.created_at)}</td>
+          <td>${s.job_type || ""}</td>
+          <td>${s.shipment_no || s.reference || ""}</td>
+          <td>${s.master_bl_no || ""}</td>
+          <td>${s.vessel || ""}</td>
+          <td>${s.voyage || ""}</td>
+          <td>${fmtDate(s.etd_pol || s.etd)}</td>
+          <td>${fmtDate(s.eta_jebel_ali || s.eta)}</td>
+          <td>${s.port_of_loading || ""}</td>
+          <td>${s.main_line || ""}</td>
+          <td>${s.agent || ""}</td>
+          <td>${r.total} CONTAINERS</td>
+          <td>${r.total}</td>
+          <td>${r.ft20}</td>
+          <td>${r.ft40}</td>
         </tr>`;
       }).join("");
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="10">${err.message || "Failed to load containers."}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="16">${err.message || "Failed to load containers."}</td></tr>`;
     }
   }
 
   document.addEventListener("click", async (e) => {
     const viewBtn = e.target.closest("[data-view-row]");
     const detailsBtn = e.target.closest("[data-details-row]");
-    if (!viewBtn && !detailsBtn) return;
-    try {
-      const tr = (viewBtn || detailsBtn).closest("tr");
-      const referenceCell = tr ? tr.querySelector("td") : null;
-      const record = await loadShipmentByReference(referenceCell ? referenceCell.textContent : "");
-      if (!record) throw new Error("No shipment record found.");
-      showShipmentDetails(record);
-    } catch (err) {
-      alert(err?.message || "Failed to open shipment details.");
+    if (viewBtn || detailsBtn) {
+      try {
+        const tr = (viewBtn || detailsBtn).closest("tr");
+        const referenceCell = tr ? tr.querySelector("td") : null;
+        const record = await loadShipmentByReference(referenceCell ? referenceCell.textContent : "");
+        if (!record) throw new Error("No shipment record found.");
+        showShipmentDetails(record);
+      } catch (err) {
+        alert(err?.message || "Failed to open shipment details.");
+      }
+      return;
     }
 
     const refreshBtn = e.target.closest("#refreshManifestBoard");
