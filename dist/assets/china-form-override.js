@@ -7,7 +7,6 @@
   const DETAIL_MODAL_ID = "chinaShipmentDetailModal";
   const CONTAINER_BOARD_ID = "chinaContainerManifestBoard";
   const CONTAINERS_SUBMENU_PANEL_ID = "chinaContainersSubmenuPanel";
-  const CONTAINERS_PORTAL_ID = "chinaContainersPortal";
 
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -342,7 +341,6 @@
         // Stay on China page; refresh panels in-place
         setTimeout(() => {
           renderContainerManifestBoard().catch(() => {});
-          renderContainersSubmenuPanel().catch(() => {});
         }, 250);
       } catch (err) {
         alert(err?.message || "Failed to save shipment.");
@@ -497,13 +495,7 @@
         }
 
         const menuText = (e.target.textContent || "").trim().toLowerCase();
-        if (menuText === "containers") {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          renderContainersSubmenuPanel();
-          return;
-        }
+        if (menuText === "containers") return;
         if (menuText === "shipments") {
           const p = document.getElementById(CONTAINERS_SUBMENU_PANEL_ID);
           if (p) p.remove();
@@ -614,69 +606,7 @@
     return null;
   }
 
-  function getVisibleContainerAnchor() {
-    // Keep tracker inside normal layout flow, right below summary row.
-    const isChinaPage = (location.hash || "").includes("china-dubai");
-    if (!isChinaPage) return null;
-
-    let portal = document.getElementById(CONTAINERS_PORTAL_ID);
-    if (!portal) {
-      portal = document.createElement("div");
-      portal.id = CONTAINERS_PORTAL_ID;
-      portal.style.position = "static";
-      portal.style.width = "100%";
-      portal.style.marginTop = "12px";
-      portal.style.marginBottom = "8px";
-      portal.style.zIndex = "auto";
-    }
-
-    const totalLabels = Array.from(document.querySelectorAll("div,span,strong"))
-      .filter((el) => /total\s*:/i.test((el.textContent || "").trim()));
-    const summaryCandidate = totalLabels
-      .map((el) => {
-        let node = el;
-        for (let i = 0; i < 10 && node; i++) {
-          const rect = node.getBoundingClientRect ? node.getBoundingClientRect() : { width: 0, height: 0, top: 0 };
-          if (rect.width > 650 && rect.width < 1800 && rect.height >= 24 && rect.height <= 90 && rect.top > 80 && rect.top < 800) {
-            return { node, rect };
-          }
-          node = node.parentElement;
-        }
-        return null;
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.rect.top - b.rect.top)[0];
-
-    if (summaryCandidate?.node?.parentElement) {
-      const parent = summaryCandidate.node.parentElement;
-      if (portal.parentNode !== parent) parent.insertBefore(portal, summaryCandidate.node.nextSibling);
-      else if (portal.previousSibling !== summaryCandidate.node) parent.insertBefore(portal, summaryCandidate.node.nextSibling);
-      return portal;
-    }
-
-    // Secondary anchor: after the visible "No data found" block.
-    const noDataNode = Array.from(document.querySelectorAll("div,span,p"))
-      .find((el) => ((el.textContent || "").trim().toLowerCase() === "no data found"));
-    if (noDataNode) {
-      let board = noDataNode.closest("section,article,div");
-      for (let i = 0; i < 6 && board; i++) {
-        const rect = board.getBoundingClientRect ? board.getBoundingClientRect() : { width: 0, height: 0, top: 0 };
-        if (rect.width > 650 && rect.width < 1800 && rect.height > 100 && rect.top > 80 && rect.top < 900) break;
-        board = board.parentElement;
-      }
-      if (board) {
-        if (portal.parentNode !== board.parentElement) board.parentElement.insertBefore(portal, board.nextSibling);
-        return portal;
-      }
-    }
-
-    const header = Array.from(document.querySelectorAll("h1,h2,h3,div,span"))
-      .find((el) => /china\s*&?\s*dubai\s*shipments/i.test((el.textContent || "").trim()));
-    const fallbackParent = header?.closest("section,main,article,div")?.parentElement || document.querySelector("#root");
-    if (!fallbackParent) return null;
-    if (portal.parentNode !== fallbackParent) fallbackParent.appendChild(portal);
-    return portal;
-  }
+  function getVisibleContainerAnchor() { return null; }
 
   async function fetchWithAuth(url, options = {}) {
     const token = localStorage.getItem("erp_token");
@@ -767,124 +697,9 @@
   }
 
   async function renderContainersSubmenuPanel() {
-    if (!(location.hash || "").includes("china-dubai")) return;
-    const anchor = getVisibleContainerAnchor();
-    if (!anchor) return;
-
-    let panel = document.getElementById(CONTAINERS_SUBMENU_PANEL_ID);
-    if (!panel) {
-      panel = document.createElement("div");
-      panel.id = CONTAINERS_SUBMENU_PANEL_ID;
-      panel.className = "china-containers-submenu";
-      panel.style.position = "static";
-      panel.style.left = "";
-      panel.style.right = "";
-      panel.style.bottom = "";
-      panel.style.maxHeight = "";
-      panel.style.overflow = "visible";
-      panel.style.zIndex = "";
-      panel.style.boxShadow = "";
-      panel.style.marginBottom = "18px";
-      panel.style.display = "block";
-      panel.style.width = "100%";
-      panel.innerHTML = `
-        <div class="china-containers-submenu-head">
-          <span>China Container Tracker (All Submitted Containers)</span>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <span style="font-size:12px;font-weight:600;color:#475569;">View: 50</span>
-            <button type="button" class="cfo-btn" id="refreshContainersSubmenu">Refresh</button>
-          </div>
-        </div>
-        <div class="china-containers-submenu-wrap">
-          <table class="china-containers-submenu-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>DATE</th>
-                <th>JOB TYPE</th>
-                <th>JOB NO</th>
-                <th>MBL NO</th>
-                <th>VESSEL</th>
-                <th>VOYAGE</th>
-                <th>ETD POL</th>
-                <th>ETA JEA</th>
-                <th>PORT OF LOADING</th>
-                <th>LINER</th>
-                <th>AGENT</th>
-                <th>CONTAINER NO</th>
-                <th>TOT. BL</th>
-                <th>20 FT</th>
-                <th>40 FT</th>
-              </tr>
-            </thead>
-            <tbody id="containersSubmenuRows">
-              <tr><td colspan="16">Loading...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      `;
-      anchor.appendChild(panel);
-    } else {
-      panel.style.display = "block";
-      if (panel.parentNode !== anchor) anchor.appendChild(panel);
-    }
-
-    const tbody = document.getElementById("containersSubmenuRows");
-    if (!tbody) return;
-
-    try {
-      const [cjson, sjson] = await Promise.all([
-        fetchWithAuth("/api/china-dubai/containers"),
-        fetchWithAuth("/api/china-dubai/shipments"),
-      ]);
-      const containers = Array.isArray(cjson.data) ? cjson.data : [];
-      const shipments = Array.isArray(sjson.data) ? sjson.data : [];
-      const byId = new Map(shipments.map((s) => [String(s.id), s]));
-
-      if (!containers.length) {
-        tbody.innerHTML = `<tr><td colspan="16">No containers saved yet.</td></tr>`;
-        return;
-      }
-
-      // Container-wise rows (each container is a separate row), newest first
-      const rows = containers
-        .slice()
-        .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
-        .slice(0, 50);
-
-      const fmtDate = (v) => {
-        if (!v) return "";
-        const d = new Date(v);
-        if (Number.isNaN(d.getTime())) return String(v);
-        return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase();
-      };
-
-      tbody.innerHTML = rows.map((r, i) => {
-        const s = byId.get(String(r.shipment_id)) || {};
-        const is20 = String(r.size || "").startsWith("20");
-        const is40 = String(r.size || "").startsWith("40");
-        return `<tr>
-          <td>${i + 1}</td>
-          <td>${fmtDate(s.created_at)}</td>
-          <td>${s.job_type || ""}</td>
-          <td>${s.shipment_no || s.reference || ""}</td>
-          <td>${s.master_bl_no || ""}</td>
-          <td>${s.vessel || ""}</td>
-          <td>${s.voyage || ""}</td>
-          <td>${fmtDate(s.etd_pol || s.etd)}</td>
-          <td>${fmtDate(s.eta_jebel_ali || s.eta)}</td>
-          <td>${s.port_of_loading || ""}</td>
-          <td>${s.main_line || ""}</td>
-          <td>${s.agent || ""}</td>
-          <td>${r.container_no || ""}</td>
-          <td>1</td>
-          <td>${is20 ? 1 : 0}</td>
-          <td>${is40 ? 1 : 0}</td>
-        </tr>`;
-      }).join("");
-    } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="16">${err.message || "Failed to load containers."}</td></tr>`;
-    }
+    // Container tracker table intentionally removed from China page.
+    const panel = document.getElementById(CONTAINERS_SUBMENU_PANEL_ID);
+    if (panel) panel.remove();
   }
 
   document.addEventListener("click", async (e) => {
@@ -921,15 +736,13 @@
     }
 
     const refreshContainersSubmenu = e.target.closest("#refreshContainersSubmenu");
-    if (refreshContainersSubmenu) {
-      await renderContainersSubmenuPanel();
-      return;
-    }
+    if (refreshContainersSubmenu) return;
   }, true);
 
   function autoRenderContainersPanel() {
     if (!(location.hash || "").includes("china-dubai")) return;
-    renderContainersSubmenuPanel().catch(() => {});
+    const panel = document.getElementById(CONTAINERS_SUBMENU_PANEL_ID);
+    if (panel) panel.remove();
   }
 
   setInterval(injectRowActions, 1200);
