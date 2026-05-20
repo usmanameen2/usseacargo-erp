@@ -719,7 +719,15 @@
       panel = document.createElement("div");
       panel.id = CONTAINERS_SUBMENU_PANEL_ID;
       panel.className = "china-containers-submenu";
-      panel.style.marginBottom = "18px";
+      panel.style.position = "fixed";
+      panel.style.left = "248px";
+      panel.style.right = "16px";
+      panel.style.bottom = "14px";
+      panel.style.maxHeight = "42vh";
+      panel.style.overflow = "auto";
+      panel.style.zIndex = "9997";
+      panel.style.boxShadow = "0 10px 28px rgba(15,23,42,.20)";
+      panel.style.marginBottom = "0";
       panel.style.display = "block";
       panel.style.width = "100%";
       panel.innerHTML = `
@@ -755,16 +763,10 @@
           </table>
         </div>
       `;
-      if (anchor.parentNode) {
-        anchor.parentNode.insertBefore(panel, anchor.nextSibling);
-      } else {
-        (document.querySelector("#root") || document.body).appendChild(panel);
-      }
+      (document.body || document.documentElement).appendChild(panel);
     } else {
       panel.style.display = "block";
-      if (anchor.parentNode && panel.previousSibling !== anchor) {
-        anchor.parentNode.insertBefore(panel, anchor.nextSibling);
-      }
+      if (panel.parentNode !== document.body) document.body.appendChild(panel);
     }
 
     const tbody = document.getElementById("containersSubmenuRows");
