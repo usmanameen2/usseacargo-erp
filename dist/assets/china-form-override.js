@@ -74,7 +74,7 @@
         .cfo-modal { width: 98vw; border-radius: 12px; }
         .cfo-title { font-size: 26px; }
       }
-      .china-manifest-board { margin-top:14px;border:1px solid #dbe3ef;border-radius:12px;background:#fff;overflow:hidden; }
+      .china-manifest-board { display:none !important; }
       .china-manifest-head { display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #e6ebf2;font-weight:700;color:#0f172a; }
       .china-manifest-wrap { overflow:auto; }
       .china-manifest-table { width:100%;border-collapse:collapse;min-width:900px;font-size:12px; }
@@ -719,15 +719,15 @@
       panel = document.createElement("div");
       panel.id = CONTAINERS_SUBMENU_PANEL_ID;
       panel.className = "china-containers-submenu";
-      panel.style.position = "fixed";
-      panel.style.left = "248px";
-      panel.style.right = "16px";
-      panel.style.bottom = "14px";
-      panel.style.maxHeight = "42vh";
-      panel.style.overflow = "auto";
-      panel.style.zIndex = "9997";
-      panel.style.boxShadow = "0 10px 28px rgba(15,23,42,.20)";
-      panel.style.marginBottom = "0";
+      panel.style.position = "static";
+      panel.style.left = "";
+      panel.style.right = "";
+      panel.style.bottom = "";
+      panel.style.maxHeight = "";
+      panel.style.overflow = "visible";
+      panel.style.zIndex = "";
+      panel.style.boxShadow = "";
+      panel.style.marginBottom = "18px";
       panel.style.display = "block";
       panel.style.width = "100%";
       panel.innerHTML = `
@@ -763,10 +763,16 @@
           </table>
         </div>
       `;
-      (document.body || document.documentElement).appendChild(panel);
+      if (anchor.parentNode) {
+        anchor.parentNode.insertBefore(panel, anchor.nextSibling);
+      } else {
+        (document.querySelector("#root") || document.body).appendChild(panel);
+      }
     } else {
       panel.style.display = "block";
-      if (panel.parentNode !== document.body) document.body.appendChild(panel);
+      if (anchor.parentNode && panel.previousSibling !== anchor) {
+        anchor.parentNode.insertBefore(panel, anchor.nextSibling);
+      }
     }
 
     const tbody = document.getElementById("containersSubmenuRows");
@@ -880,12 +886,13 @@
   }
 
   setInterval(injectRowActions, 1200);
-  setTimeout(renderContainerManifestBoard, 1200);
+  // Disabled duplicate legacy board; using only the clean tracker table.
+  // setTimeout(renderContainerManifestBoard, 1200);
   setTimeout(autoRenderContainersPanel, 900);
   setInterval(autoRenderContainersPanel, 2500);
   if (localStorage.getItem("china_manifest_refresh") === "1") {
     localStorage.removeItem("china_manifest_refresh");
-    setTimeout(renderContainerManifestBoard, 1800);
+    // setTimeout(renderContainerManifestBoard, 1800);
     setTimeout(autoRenderContainersPanel, 2000);
   }
 
