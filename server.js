@@ -394,6 +394,12 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 // ─── HEALTH & DASHBOARD ──────────────────────────────────────
 app.get('/api/health', (req, res) => res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() }));
 
+// Graceful root API response for accidental '/api/' calls from UI.
+// Some menus may temporarily resolve an empty endpoint key during startup.
+app.get(['/api', '/api/'], (req, res) => {
+  res.json({ success: true, data: [], message: 'API root' });
+});
+
 app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
   try {
     const kpi = {
