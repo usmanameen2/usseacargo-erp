@@ -476,7 +476,7 @@ app.use((err, req, res, next) => {
 
 initDb().then(() => {
   app.listen(PORT, () => {
-    console.log(`USSeaCargo ERP v19.3 on port ${PORT}`);
+    console.log(`USSeaCargo ERP v21.2 on port ${PORT}`);
   });
 }).catch(err => {
   console.error('DB init failed:', err);
