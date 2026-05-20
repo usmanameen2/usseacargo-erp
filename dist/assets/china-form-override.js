@@ -615,7 +615,7 @@
   }
 
   function getVisibleContainerAnchor() {
-    // Keep container tracker in normal page flow under the shipment summary row.
+    // Hard-lock container tracker under top shipment summary area (never page bottom).
     const isChinaPage = (location.hash || "").includes("china-dubai");
     if (!isChinaPage) return null;
 
@@ -623,8 +623,12 @@
     if (!portal) {
       portal = document.createElement("div");
       portal.id = CONTAINERS_PORTAL_ID;
-      portal.style.width = "100%";
-      portal.style.marginTop = "12px";
+      portal.style.position = "fixed";
+      portal.style.zIndex = "9991";
+      portal.style.maxHeight = "42vh";
+      portal.style.overflow = "auto";
+      portal.style.pointerEvents = "auto";
+      document.body.appendChild(portal);
     }
 
     const totalLabels = Array.from(document.querySelectorAll("div,span,strong"))
@@ -640,13 +644,17 @@
         if (rect.width > 700 && rect.height > 28 && rect.height < 140) break;
         summaryCard = summaryCard.parentElement;
       }
-      if (summaryCard && summaryCard.parentElement) {
-        summaryCard.insertAdjacentElement("afterend", portal);
+      if (summaryCard) {
+        const r = summaryCard.getBoundingClientRect();
+        portal.style.left = `${Math.max(220, Math.floor(r.left))}px`;
+        portal.style.top = `${Math.floor(r.bottom + 10)}px`;
+        portal.style.width = `${Math.max(700, Math.floor(r.width))}px`;
+        portal.style.bottom = "auto";
         return portal;
       }
     }
 
-    // secondary anchor: directly after "No data found" block in shipments area
+    // secondary anchor: under "No data found" block in shipments area
     const noDataNode = Array.from(document.querySelectorAll("div,span,p"))
       .find((el) => ((el.textContent || "").trim().toLowerCase() === "no data found"));
     if (noDataNode) {
@@ -656,8 +664,12 @@
         if (rect.width > 700 && rect.height > 120 && rect.top < 700) break;
         board = board.parentElement;
       }
-      if (board && board.parentElement) {
-        board.insertAdjacentElement("afterend", portal);
+      if (board) {
+        const r = board.getBoundingClientRect();
+        portal.style.left = `${Math.max(220, Math.floor(r.left))}px`;
+        portal.style.top = `${Math.floor(r.bottom + 10)}px`;
+        portal.style.width = `${Math.max(700, Math.floor(r.width))}px`;
+        portal.style.bottom = "auto";
         return portal;
       }
     }
@@ -665,10 +677,12 @@
     const header = Array.from(document.querySelectorAll("h1,h2,h3,div,span"))
       .find((el) => /china\s*&?\s*dubai\s*shipments/i.test((el.textContent || "").trim()));
     const fallbackParent = header?.closest("section,main,article,div")?.parentElement || document.querySelector("#root");
-    if (!fallbackParent) return null;
-    // Final fallback: force near top of content flow.
-    if (fallbackParent.firstElementChild) fallbackParent.firstElementChild.insertAdjacentElement("afterend", portal);
-    else fallbackParent.appendChild(portal);
+    if (!fallbackParent) return portal;
+    const fr = fallbackParent.getBoundingClientRect();
+    portal.style.left = `${Math.max(220, Math.floor(fr.left + 12))}px`;
+    portal.style.top = `${Math.max(260, Math.floor(fr.top + 260))}px`;
+    portal.style.width = `${Math.max(700, Math.floor(fr.width - 24))}px`;
+    portal.style.bottom = "auto";
     return portal;
   }
 
