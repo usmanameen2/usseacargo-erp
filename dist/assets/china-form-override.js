@@ -7,6 +7,7 @@
   const DETAIL_MODAL_ID = "chinaShipmentDetailModal";
   const CONTAINER_BOARD_ID = "chinaContainerManifestBoard";
   const CONTAINERS_SUBMENU_PANEL_ID = "chinaContainersSubmenuPanel";
+  const CONTAINERS_PORTAL_ID = "chinaContainersPortal";
 
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -614,28 +615,42 @@
   }
 
   function getVisibleContainerAnchor() {
-    // 1) Best anchor: the shipment table/list region ("No data found" row area)
-    const noData = Array.from(document.querySelectorAll("div,td,span,p")).find((el) =>
-      /\bno data found\b/i.test((el.textContent || "").trim())
-    );
-    if (noData) {
-      const block = noData.closest("table,div");
-      if (block) return block.closest("div") || block;
+    // Keep container tracker in normal page flow under the shipment summary row.
+    const isChinaPage = (location.hash || "").includes("china-dubai");
+    if (!isChinaPage) return null;
+
+    let portal = document.getElementById(CONTAINERS_PORTAL_ID);
+    if (!portal) {
+      portal = document.createElement("div");
+      portal.id = CONTAINERS_PORTAL_ID;
+      portal.style.width = "100%";
+      portal.style.marginTop = "12px";
     }
 
-    // 2) Next best: China page header area
-    const heading = Array.from(document.querySelectorAll("h1,h2,h3,div,span")).find((el) =>
-      /china\s*&?\s*dubai\s*shipments/i.test((el.textContent || "").trim())
-    );
-    if (heading) {
-      const headerBlock = heading.closest("div");
-      if (headerBlock) return headerBlock.parentElement || headerBlock;
+    const totalLabel = Array.from(document.querySelectorAll("div,span,strong"))
+      .find((el) => /total\s*:/i.test((el.textContent || "").trim()));
+    const summaryCard = totalLabel
+      ? totalLabel.closest("div")
+      : null;
+
+    if (summaryCard && summaryCard.parentElement) {
+      const parent = summaryCard.parentElement;
+      const next = summaryCard.nextSibling;
+      if (portal.parentNode !== parent) {
+        if (next) parent.insertBefore(portal, next);
+        else parent.appendChild(portal);
+      } else if (portal.previousSibling !== summaryCard) {
+        if (next) parent.insertBefore(portal, next);
+      }
+      return portal;
     }
-    const totalEl = Array.from(document.querySelectorAll("div,span,p")).find((el) =>
-      /\btotal\s*:/i.test((el.textContent || "").trim())
-    );
-    if (totalEl) return totalEl.closest("div");
-    return getMainBoardRoot() || document.querySelector("#root") || document.body;
+
+    const header = Array.from(document.querySelectorAll("h1,h2,h3,div,span"))
+      .find((el) => /china\s*&?\s*dubai\s*shipments/i.test((el.textContent || "").trim()));
+    const fallbackParent = header?.closest("section,main,article,div")?.parentElement || document.querySelector("#root");
+    if (!fallbackParent) return null;
+    if (portal.parentNode !== fallbackParent) fallbackParent.appendChild(portal);
+    return portal;
   }
 
   async function fetchWithAuth(url, options = {}) {
@@ -783,17 +798,10 @@
           </table>
         </div>
       `;
-      if (anchor.parentNode) {
-        anchor.parentNode.insertBefore(panel, anchor.nextSibling);
-      } else {
-        (document.querySelector("#root") || document.body).appendChild(panel);
-      }
+      anchor.appendChild(panel);
     } else {
       panel.style.display = "block";
-      if (anchor.parentNode) {
-        // Keep this table directly under shipment list block
-        anchor.parentNode.insertBefore(panel, anchor.nextSibling);
-      }
+      if (panel.parentNode !== anchor) anchor.appendChild(panel);
     }
 
     const tbody = document.getElementById("containersSubmenuRows");
