@@ -613,6 +613,24 @@
     return null;
   }
 
+  function getVisibleContainerAnchor() {
+    // Best anchor: the shipments grid table with "REFERENCE ... ACTIONS"
+    const actionsHeader = Array.from(document.querySelectorAll("th,div,span")).find((el) =>
+      /\bactions\b/i.test((el.textContent || "").trim())
+    );
+    if (actionsHeader) {
+      const rowWrap = actionsHeader.closest("table,div");
+      if (rowWrap) return rowWrap.closest("div") || rowWrap;
+    }
+    const summary = Array.from(document.querySelectorAll("div,span,p")).find((el) =>
+      /\btotal\s*:/i.test((el.textContent || "").trim())
+    );
+    if (summary) return summary.closest("div");
+    const table = document.querySelector("table");
+    if (table) return table.closest("div") || table.parentElement;
+    return getMainBoardRoot();
+  }
+
   async function fetchWithAuth(url, options = {}) {
     const token = localStorage.getItem("erp_token");
     if (!token) throw new Error("Login required.");
@@ -703,17 +721,18 @@
 
   async function renderContainersSubmenuPanel() {
     if (!(location.hash || "").includes("china-dubai")) return;
-    const root = getMainBoardRoot();
-    if (!root) return;
+    const anchor = getVisibleContainerAnchor();
+    if (!anchor) return;
 
     let panel = document.getElementById(CONTAINERS_SUBMENU_PANEL_ID);
     if (!panel) {
       panel = document.createElement("div");
       panel.id = CONTAINERS_SUBMENU_PANEL_ID;
       panel.className = "china-containers-submenu";
+      panel.style.marginBottom = "18px";
       panel.innerHTML = `
         <div class="china-containers-submenu-head">
-          <span>Containers (Saved Rows)</span>
+          <span>China Container Tracker (All Submitted Containers)</span>
           <button type="button" class="cfo-btn" id="refreshContainersSubmenu">Refresh</button>
         </div>
         <div class="china-containers-submenu-wrap">
@@ -738,7 +757,12 @@
           </table>
         </div>
       `;
-      root.appendChild(panel);
+      // Insert immediately after visible shipment area so user always sees it
+      if (anchor.parentNode) {
+        anchor.parentNode.insertBefore(panel, anchor.nextSibling);
+      } else {
+        document.body.appendChild(panel);
+      }
     }
 
     const tbody = document.getElementById("containersSubmenuRows");
@@ -758,7 +782,9 @@
         return;
       }
 
-      tbody.innerHTML = containers.map((c, i) => {
+      // newest first, easier tracking
+      const ordered = containers.slice().sort((a, b) => (b.id || 0) - (a.id || 0));
+      tbody.innerHTML = ordered.map((c, i) => {
         const ship = byId.get(String(c.shipment_id));
         return `<tr>
           <td>${i + 1}</td>
@@ -823,8 +849,8 @@
 
   setInterval(injectRowActions, 1200);
   setTimeout(renderContainerManifestBoard, 1200);
-  setTimeout(autoRenderContainersPanel, 1400);
-  setInterval(autoRenderContainersPanel, 3500);
+  setTimeout(autoRenderContainersPanel, 900);
+  setInterval(autoRenderContainersPanel, 2500);
   if (localStorage.getItem("china_manifest_refresh") === "1") {
     localStorage.removeItem("china_manifest_refresh");
     setTimeout(renderContainerManifestBoard, 1800);
