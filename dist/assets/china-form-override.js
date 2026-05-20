@@ -614,7 +614,16 @@
   }
 
   function getVisibleContainerAnchor() {
-    // Hard anchor to the visible China page header area
+    // 1) Best anchor: the shipment table/list region ("No data found" row area)
+    const noData = Array.from(document.querySelectorAll("div,td,span,p")).find((el) =>
+      /\bno data found\b/i.test((el.textContent || "").trim())
+    );
+    if (noData) {
+      const block = noData.closest("table,div");
+      if (block) return block.closest("div") || block;
+    }
+
+    // 2) Next best: China page header area
     const heading = Array.from(document.querySelectorAll("h1,h2,h3,div,span")).find((el) =>
       /china\s*&?\s*dubai\s*shipments/i.test((el.textContent || "").trim())
     );
@@ -741,7 +750,10 @@
       panel.innerHTML = `
         <div class="china-containers-submenu-head">
           <span>China Container Tracker (All Submitted Containers)</span>
-          <button type="button" class="cfo-btn" id="refreshContainersSubmenu">Refresh</button>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span style="font-size:12px;font-weight:600;color:#475569;">View: 50</span>
+            <button type="button" class="cfo-btn" id="refreshContainersSubmenu">Refresh</button>
+          </div>
         </div>
         <div class="china-containers-submenu-wrap">
           <table class="china-containers-submenu-table">
@@ -779,7 +791,7 @@
     } else {
       panel.style.display = "block";
       if (anchor.parentNode) {
-        // Keep this table directly under the China shipment header block
+        // Keep this table directly under shipment list block
         anchor.parentNode.insertBefore(panel, anchor.nextSibling);
       }
     }
@@ -814,7 +826,8 @@
           const ft40 = list.filter((r) => String(r.size || "").startsWith("40")).length;
           return { ship, total: list.length, ft20, ft40 };
         })
-        .sort((a, b) => Number(b.ship.id || 0) - Number(a.ship.id || 0));
+        .sort((a, b) => Number(b.ship.id || 0) - Number(a.ship.id || 0))
+        .slice(0, 50);
 
       const fmtDate = (v) => {
         if (!v) return "";
