@@ -280,10 +280,10 @@
             destination: inputs[16]?.value || "",
           };
         });
-        const filledContainers = containerRows.filter((r) =>
-          [r.containerNo, r.sealNo, r.destination].some((v) => String(v || "").trim() !== "")
-        );
-        payload.numberOfContainers = filledContainers.length || containerRows.length || 1;
+        // Save all visible rows (even when some fields are blank) because user may add rows first,
+        // then complete HBL/manifest details later per container.
+        const filledContainers = containerRows.length ? containerRows : [{}];
+        payload.numberOfContainers = containerRows.length || 1;
         if (!payload.cargo || payload.cargo === "General") payload.cargo = `${payload.numberOfContainers} Container(s)`;
 
         const shipmentRes = await fetch("/api/china-dubai/shipments", {
@@ -301,13 +301,14 @@
 
         const shipmentId = shipmentJson?.data?.id;
         if (shipmentId) {
-          for (const row of filledContainers) {
+          for (let i = 0; i < filledContainers.length; i++) {
+            const row = filledContainers[i] || {};
             const containerPayload = {
               shipmentId,
-              containerNo: row.containerNo,
-              sealNo: row.sealNo,
-              size: row.size,
-              type: row.type,
+              containerNo: row.containerNo || `ROW-${i + 1}`,
+              sealNo: row.sealNo || "",
+              size: row.size || "20",
+              type: row.type || "GP",
               weight: Number(row.gwt || 0),
               status: row.rowStatus || "active",
             };
