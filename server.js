@@ -60,6 +60,16 @@ class Database {
 
 const db = new Database(DB_PATH);
 
+async function ensureTableColumns(tableName, columns) {
+  const existing = await db.all(`PRAGMA table_info(${tableName})`);
+  const existingNames = new Set((existing || []).map(c => c.name));
+  for (const col of columns) {
+    if (!existingNames.has(col.name)) {
+      await db.run(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.type}`);
+    }
+  }
+}
+
 // ─── INIT DATABASE ────────────────────────────────────────────
 async function initDb() {
   await db.exec(`PRAGMA journal_mode = WAL;`);
@@ -105,6 +115,22 @@ async function initDb() {
   ];
 
   for (const sql of tables) await db.exec(sql);
+
+  // Backward-compatible schema upgrade for China->Dubai menu (v21 UI fields)
+  await ensureTableColumns('china_dubai_shipments', [
+    { name: 'reference', type: 'TEXT' },
+    { name: 'client', type: 'TEXT' },
+    { name: 'cargo', type: 'TEXT' },
+    { name: 'origin', type: 'TEXT' },
+    { name: 'destination', type: 'TEXT' },
+    { name: 'mode', type: 'TEXT' },
+    { name: 'etd', type: 'TEXT' },
+    { name: 'eta', type: 'TEXT' },
+    { name: 'cost', type: 'REAL DEFAULT 0' },
+    { name: 'revenue', type: 'REAL DEFAULT 0' },
+    { name: 'profit', type: 'REAL DEFAULT 0' },
+    { name: 'margin', type: 'REAL DEFAULT 0' },
+  ]);
 
   const admin = await db.get("SELECT id FROM users WHERE username = 'admin'");
   if (!admin) {
@@ -170,7 +196,10 @@ const FIELDS = {
   other_jobs: ['job_no','job_type','description','customer_name','status'],
   job_containers: ['job_id','job_type','container_no','seal_no','container_size','container_type','weight','pieces','status'],
   shipping_docs: ['job_id','doc_type','file_name','file_path','uploaded_by','status'],
-  china_dubai_shipments: ['shipment_no','invoice_no','supplier','product','quantity','value','status','shipped_date','received_date'],
+  china_dubai_shipments: [
+    'shipment_no','invoice_no','supplier','product','quantity','value','status','shipped_date','received_date',
+    'reference','client','cargo','origin','destination','mode','etd','eta','cost','revenue','profit','margin'
+  ],
   gate_passes: ['pass_no','gate_type','vehicle_no','driver_name','purpose','date','status'],
   customs_deposits: ['deposit_no','amount','currency','date','reference','status'],
   packing_lists: ['list_no','shipment_id','total_packages','total_weight','status'],
