@@ -6,6 +6,7 @@
   const COUNT_ID = "containerCount";
   const DETAIL_MODAL_ID = "chinaShipmentDetailModal";
   const CONTAINER_BOARD_ID = "chinaContainerManifestBoard";
+  const CONTAINERS_SUBMENU_PANEL_ID = "chinaContainersSubmenuPanel";
 
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -79,6 +80,16 @@
       .china-manifest-table { width:100%;border-collapse:collapse;min-width:900px;font-size:12px; }
       .china-manifest-table th,.china-manifest-table td { border:1px solid #e2e8f0;padding:8px;text-align:left; }
       .china-manifest-table th { background:#f8fafc;color:#334155; }
+      .china-containers-submenu {
+        margin-top: 12px; border:1px solid #dbe3ef; border-radius:12px; background:#fff; overflow:hidden;
+      }
+      .china-containers-submenu-head {
+        display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #e6ebf2; font-weight:700; color:#0f172a;
+      }
+      .china-containers-submenu-wrap { overflow:auto; }
+      .china-containers-submenu-table { width:100%; min-width:980px; border-collapse:collapse; font-size:12px; }
+      .china-containers-submenu-table th,.china-containers-submenu-table td { border:1px solid #e2e8f0; padding:8px; text-align:left; }
+      .china-containers-submenu-table th { background:#f8fafc; color:#334155; }
     `;
     document.head.appendChild(style);
   }
@@ -480,6 +491,19 @@
           e.stopImmediatePropagation();
           showModal();
         }
+
+        const menuText = (e.target.textContent || "").trim().toLowerCase();
+        if (menuText === "containers") {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          renderContainersSubmenuPanel();
+          return;
+        }
+        if (menuText === "shipments") {
+          const p = document.getElementById(CONTAINERS_SUBMENU_PANEL_ID);
+          if (p) p.remove();
+        }
       },
       true
     );
@@ -575,8 +599,15 @@
     const marker = Array.from(document.querySelectorAll("h1,h2,h3,div,span")).find((el) =>
       /china\s*&?\s*dubai\s*shipments/i.test((el.textContent || "").trim())
     );
-    if (!marker) return null;
-    return marker.closest("section,main,article,div")?.parentElement || marker.closest("section,main,article,div");
+    if (marker) {
+      return marker.closest("section,main,article,div")?.parentElement || marker.closest("section,main,article,div");
+    }
+    // Fallback: anchor to app root/main area on china-dubai page.
+    if (location.hash && location.hash.includes("china-dubai")) {
+      const root = document.querySelector("#root");
+      if (root) return root;
+    }
+    return null;
   }
 
   async function fetchWithAuth(url, options = {}) {
@@ -667,6 +698,83 @@
     await renderContainerManifestBoard();
   }
 
+  async function renderContainersSubmenuPanel() {
+    if (!(location.hash || "").includes("china-dubai")) return;
+    const root = getMainBoardRoot();
+    if (!root) return;
+
+    let panel = document.getElementById(CONTAINERS_SUBMENU_PANEL_ID);
+    if (!panel) {
+      panel = document.createElement("div");
+      panel.id = CONTAINERS_SUBMENU_PANEL_ID;
+      panel.className = "china-containers-submenu";
+      panel.innerHTML = `
+        <div class="china-containers-submenu-head">
+          <span>Containers (Saved Rows)</span>
+          <button type="button" class="cfo-btn" id="refreshContainersSubmenu">Refresh</button>
+        </div>
+        <div class="china-containers-submenu-wrap">
+          <table class="china-containers-submenu-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Shipment ID</th>
+                <th>Reference</th>
+                <th>Container No</th>
+                <th>Seal No</th>
+                <th>Size</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Weight</th>
+                <th>Created At</th>
+              </tr>
+            </thead>
+            <tbody id="containersSubmenuRows">
+              <tr><td colspan="10">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      `;
+      root.appendChild(panel);
+    }
+
+    const tbody = document.getElementById("containersSubmenuRows");
+    if (!tbody) return;
+
+    try {
+      const [cjson, sjson] = await Promise.all([
+        fetchWithAuth("/api/china-dubai/containers"),
+        fetchWithAuth("/api/china-dubai/shipments"),
+      ]);
+      const containers = Array.isArray(cjson.data) ? cjson.data : [];
+      const shipments = Array.isArray(sjson.data) ? sjson.data : [];
+      const byId = new Map(shipments.map((s) => [String(s.id), s]));
+
+      if (!containers.length) {
+        tbody.innerHTML = `<tr><td colspan="10">No containers saved yet.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = containers.map((c, i) => {
+        const ship = byId.get(String(c.shipment_id));
+        return `<tr>
+          <td>${i + 1}</td>
+          <td>${c.shipment_id || ""}</td>
+          <td>${ship?.reference || ship?.master_bl_no || ""}</td>
+          <td>${c.container_no || ""}</td>
+          <td>${c.seal_no || ""}</td>
+          <td>${c.size || ""}</td>
+          <td>${c.type || ""}</td>
+          <td>${c.status || ""}</td>
+          <td>${c.weight ?? 0}</td>
+          <td>${c.created_at || ""}</td>
+        </tr>`;
+      }).join("");
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="10">${err.message || "Failed to load containers."}</td></tr>`;
+    }
+  }
+
   document.addEventListener("click", async (e) => {
     const viewBtn = e.target.closest("[data-view-row]");
     const detailsBtn = e.target.closest("[data-details-row]");
@@ -697,13 +805,27 @@
       }
       return;
     }
+
+    const refreshContainersSubmenu = e.target.closest("#refreshContainersSubmenu");
+    if (refreshContainersSubmenu) {
+      await renderContainersSubmenuPanel();
+      return;
+    }
   }, true);
+
+  function autoRenderContainersPanel() {
+    if (!(location.hash || "").includes("china-dubai")) return;
+    renderContainersSubmenuPanel().catch(() => {});
+  }
 
   setInterval(injectRowActions, 1200);
   setTimeout(renderContainerManifestBoard, 1200);
+  setTimeout(autoRenderContainersPanel, 1400);
+  setInterval(autoRenderContainersPanel, 3500);
   if (localStorage.getItem("china_manifest_refresh") === "1") {
     localStorage.removeItem("china_manifest_refresh");
     setTimeout(renderContainerManifestBoard, 1800);
+    setTimeout(autoRenderContainersPanel, 2000);
   }
 
   injectStyles();
