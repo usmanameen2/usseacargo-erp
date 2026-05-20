@@ -813,20 +813,10 @@
         return;
       }
 
-      const grouped = new Map();
-      for (const c of containers) {
-        const key = String(c.shipment_id || "");
-        if (!grouped.has(key)) grouped.set(key, []);
-        grouped.get(key).push(c);
-      }
-      const rows = Array.from(grouped.entries())
-        .map(([shipmentId, list]) => {
-          const ship = byId.get(String(shipmentId)) || {};
-          const ft20 = list.filter((r) => String(r.size || "").startsWith("20")).length;
-          const ft40 = list.filter((r) => String(r.size || "").startsWith("40")).length;
-          return { ship, total: list.length, ft20, ft40 };
-        })
-        .sort((a, b) => Number(b.ship.id || 0) - Number(a.ship.id || 0))
+      // Container-wise rows (each container is a separate row), newest first
+      const rows = containers
+        .slice()
+        .sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
         .slice(0, 50);
 
       const fmtDate = (v) => {
@@ -837,7 +827,9 @@
       };
 
       tbody.innerHTML = rows.map((r, i) => {
-        const s = r.ship;
+        const s = byId.get(String(r.shipment_id)) || {};
+        const is20 = String(r.size || "").startsWith("20");
+        const is40 = String(r.size || "").startsWith("40");
         return `<tr>
           <td>${i + 1}</td>
           <td>${fmtDate(s.created_at)}</td>
@@ -851,10 +843,10 @@
           <td>${s.port_of_loading || ""}</td>
           <td>${s.main_line || ""}</td>
           <td>${s.agent || ""}</td>
-          <td>${r.total} CONTAINERS</td>
-          <td>${r.total}</td>
-          <td>${r.ft20}</td>
-          <td>${r.ft40}</td>
+          <td>${r.container_no || ""}</td>
+          <td>1</td>
+          <td>${is20 ? 1 : 0}</td>
+          <td>${is40 ? 1 : 0}</td>
         </tr>`;
       }).join("");
     } catch (err) {
