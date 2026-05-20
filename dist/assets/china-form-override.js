@@ -8,6 +8,9 @@
   const CONTAINER_BOARD_ID = "chinaContainerManifestBoard";
   const CONTAINERS_SUBMENU_PANEL_ID = "chinaContainersSubmenuPanel";
   const CHINA_CONTAINERS_INLINE_ID = "chinaContainersInlineSection";
+  const CONTAINERS_PAGE_SIZE = 20;
+  let containersCurrentPage = 1;
+  let containersAllRows = [];
 
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -96,6 +99,9 @@
       }
       .china-inline-containers-head {
         display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #e6ebf2; font-weight:700; color:#0f172a;
+      }
+      .china-inline-containers-pager {
+        display:flex; gap:8px; align-items:center; font-size:12px; color:#475569;
       }
       .china-inline-containers-wrap { overflow:auto; }
       .china-inline-containers-table { width:100%; min-width:1100px; border-collapse:collapse; font-size:12px; }
@@ -741,7 +747,12 @@
       section.innerHTML = `
         <div class="china-inline-containers-head">
           <span>Containers (Auto from New Shipment)</span>
-          <button type="button" class="cfo-btn" id="refreshInlineContainers">Refresh</button>
+          <div class="china-inline-containers-pager">
+            <button type="button" class="cfo-btn" id="prevInlineContainers">Prev</button>
+            <span id="inlineContainersPageInfo">Page 1</span>
+            <button type="button" class="cfo-btn" id="nextInlineContainers">Next</button>
+            <button type="button" class="cfo-btn" id="refreshInlineContainers">Refresh</button>
+          </div>
         </div>
         <div class="china-inline-containers-wrap">
           <table class="china-inline-containers-table">
@@ -785,11 +796,19 @@
         return d.toLocaleString("en-GB");
       };
 
-      const rows = containers.slice().sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
-      tbody.innerHTML = rows.map((c, i) => {
+      containersAllRows = containers.slice().sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+      const totalPages = Math.max(1, Math.ceil(containersAllRows.length / CONTAINERS_PAGE_SIZE));
+      if (containersCurrentPage > totalPages) containersCurrentPage = totalPages;
+      if (containersCurrentPage < 1) containersCurrentPage = 1;
+      const start = (containersCurrentPage - 1) * CONTAINERS_PAGE_SIZE;
+      const pageRows = containersAllRows.slice(start, start + CONTAINERS_PAGE_SIZE);
+      const pageInfo = document.getElementById("inlineContainersPageInfo");
+      if (pageInfo) pageInfo.textContent = `Page ${containersCurrentPage} / ${totalPages} (20 rows)`;
+
+      tbody.innerHTML = pageRows.map((c, i) => {
         const s = byId.get(String(c.shipment_id)) || {};
         return `<tr>
-          <td>${i + 1}</td>
+          <td>${start + i + 1}</td>
           <td>${s.reference || s.shipment_no || ""}</td>
           <td>${s.client || ""}</td>
           <td>${c.container_no || ""}</td>
@@ -844,6 +863,19 @@
 
     const refreshInline = e.target.closest("#refreshInlineContainers");
     if (refreshInline) {
+      await renderInlineContainersTable();
+      return;
+    }
+    const prevInline = e.target.closest("#prevInlineContainers");
+    if (prevInline) {
+      containersCurrentPage = Math.max(1, containersCurrentPage - 1);
+      await renderInlineContainersTable();
+      return;
+    }
+    const nextInline = e.target.closest("#nextInlineContainers");
+    if (nextInline) {
+      const totalPages = Math.max(1, Math.ceil((containersAllRows.length || 0) / CONTAINERS_PAGE_SIZE));
+      containersCurrentPage = Math.min(totalPages, containersCurrentPage + 1);
       await renderInlineContainersTable();
       return;
     }
