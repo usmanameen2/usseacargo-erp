@@ -629,27 +629,41 @@
 
     const totalLabel = Array.from(document.querySelectorAll("div,span,strong"))
       .find((el) => /total\s*:/i.test((el.textContent || "").trim()));
-    const summaryCard = totalLabel
-      ? totalLabel.closest("div")
-      : null;
-
-    if (summaryCard && summaryCard.parentElement) {
-      const parent = summaryCard.parentElement;
-      const next = summaryCard.nextSibling;
-      if (portal.parentNode !== parent) {
-        if (next) parent.insertBefore(portal, next);
-        else parent.appendChild(portal);
-      } else if (portal.previousSibling !== summaryCard) {
-        if (next) parent.insertBefore(portal, next);
+    if (totalLabel) {
+      // pick nearest small/visible summary bar, then insert immediately after it
+      let summaryCard = totalLabel;
+      for (let i = 0; i < 8 && summaryCard; i++) {
+        const rect = summaryCard.getBoundingClientRect ? summaryCard.getBoundingClientRect() : { width: 0, height: 0 };
+        if (rect.width > 500 && rect.height > 28 && rect.height < 140) break;
+        summaryCard = summaryCard.parentElement;
       }
-      return portal;
+      if (summaryCard && summaryCard.parentElement) {
+        summaryCard.insertAdjacentElement("afterend", portal);
+        return portal;
+      }
+    }
+
+    // secondary anchor: directly after "No data found" block in shipments area
+    const noDataNode = Array.from(document.querySelectorAll("div,span,p"))
+      .find((el) => ((el.textContent || "").trim().toLowerCase() === "no data found"));
+    if (noDataNode) {
+      const board = noDataNode.closest("section,article,div");
+      if (board && board.parentElement) {
+        board.insertAdjacentElement("afterend", portal);
+        return portal;
+      }
     }
 
     const header = Array.from(document.querySelectorAll("h1,h2,h3,div,span"))
       .find((el) => /china\s*&?\s*dubai\s*shipments/i.test((el.textContent || "").trim()));
     const fallbackParent = header?.closest("section,main,article,div")?.parentElement || document.querySelector("#root");
     if (!fallbackParent) return null;
-    if (portal.parentNode !== fallbackParent) fallbackParent.appendChild(portal);
+    // Final fallback: force near top of content flow.
+    if (fallbackParent.firstElementChild) {
+      fallbackParent.firstElementChild.insertAdjacentElement("afterend", portal);
+    } else {
+      fallbackParent.appendChild(portal);
+    }
     return portal;
   }
 
