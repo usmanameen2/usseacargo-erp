@@ -262,6 +262,7 @@ const ALIASES = {
   'china-dubai/containers': 'shipment_containers',
   'china-dubai/line-items': 'shipment_line_items',
   'china-dubai/hs-code-products': 'hs_code_products',
+  'hs-code-products': 'hs_code_products',
   'gate-passes': 'gate_passes',
   'customs-deposits': 'customs_deposits',
   'packing-lists': 'packing_lists',
