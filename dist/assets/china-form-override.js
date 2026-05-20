@@ -614,9 +614,11 @@
   }
 
   function getVisibleContainerAnchor() {
-    const root = document.querySelector("#root");
-    if (root) return root;
-    return getMainBoardRoot() || document.body;
+    const totalEl = Array.from(document.querySelectorAll("div,span,p")).find((el) =>
+      /\btotal\s*:/i.test((el.textContent || "").trim())
+    );
+    if (totalEl) return totalEl.closest("div");
+    return getMainBoardRoot() || document.querySelector("#root") || document.body;
   }
 
   async function fetchWithAuth(url, options = {}) {
@@ -718,6 +720,8 @@
       panel.id = CONTAINERS_SUBMENU_PANEL_ID;
       panel.className = "china-containers-submenu";
       panel.style.marginBottom = "18px";
+      panel.style.display = "block";
+      panel.style.width = "100%";
       panel.innerHTML = `
         <div class="china-containers-submenu-head">
           <span>China Container Tracker (All Submitted Containers)</span>
@@ -751,9 +755,16 @@
           </table>
         </div>
       `;
-      anchor.appendChild(panel);
-    } else if (panel.parentNode !== anchor) {
-      anchor.appendChild(panel);
+      if (anchor.parentNode) {
+        anchor.parentNode.insertBefore(panel, anchor.nextSibling);
+      } else {
+        (document.querySelector("#root") || document.body).appendChild(panel);
+      }
+    } else {
+      panel.style.display = "block";
+      if (anchor.parentNode && panel.previousSibling !== anchor) {
+        anchor.parentNode.insertBefore(panel, anchor.nextSibling);
+      }
     }
 
     const tbody = document.getElementById("containersSubmenuRows");
