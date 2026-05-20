@@ -4,6 +4,8 @@
   const OVERLAY_ID = "chinaFormOverlay";
   const TABLE_BODY_ID = "containerRows";
   const COUNT_ID = "containerCount";
+  const DETAIL_MODAL_ID = "chinaShipmentDetailModal";
+  const CONTAINER_BOARD_ID = "chinaContainerManifestBoard";
 
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -71,6 +73,12 @@
         .cfo-modal { width: 98vw; border-radius: 12px; }
         .cfo-title { font-size: 26px; }
       }
+      .china-manifest-board { margin-top:14px;border:1px solid #dbe3ef;border-radius:12px;background:#fff;overflow:hidden; }
+      .china-manifest-head { display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #e6ebf2;font-weight:700;color:#0f172a; }
+      .china-manifest-wrap { overflow:auto; }
+      .china-manifest-table { width:100%;border-collapse:collapse;min-width:900px;font-size:12px; }
+      .china-manifest-table th,.china-manifest-table td { border:1px solid #e2e8f0;padding:8px;text-align:left; }
+      .china-manifest-table th { background:#f8fafc;color:#334155; }
     `;
     document.head.appendChild(style);
   }
@@ -131,7 +139,7 @@
       <form class="cfo-form" id="cfoForm">
         <div class="cfo-grid">
           ${selectField("Branch", "branch", ["UAE", "KSA", "OMAN", "QATAR"], { value: "UAE" })}
-          ${selectField("Job Type", "jobType", ["SELECT JOB TYPE", "Import", "Export", "Transshipment"], { required: true, value: "SELECT JOB TYPE" })}
+          ${selectField("Job Type", "jobType", ["SELECT JOB TYPE", "FCL", "CONSOLE", "CO-LOAD", "CO-LOAD FCL", "BREAKBULK", "DIRECT-FCL", "DIRECT LCL"], { required: true, value: "SELECT JOB TYPE" })}
           ${selectField("Shipment Type", "shipmentType", ["COC", "SOC", "FCL", "LCL"], { required: true, value: "COC" })}
           ${baseField("Agent", "agent")}
           ${baseField("Port of Loading", "portOfLoading", { required: true })}
@@ -251,6 +259,33 @@
         payload.etd = payload.etd || payload.etdPol || "";
         payload.eta = payload.eta || payload.etaJebelAli || "";
 
+        const containerRows = Array.from(document.querySelectorAll(`#${TABLE_BODY_ID} tr`)).map((tr) => {
+          const inputs = tr.querySelectorAll("input,select");
+          return {
+            containerNo: inputs[1]?.value?.trim() || "",
+            sealNo: inputs[2]?.value?.trim() || "",
+            size: inputs[3]?.value || "",
+            type: inputs[4]?.value || "",
+            shipType: inputs[5]?.value || "",
+            ediCode: inputs[6]?.value || "",
+            ctg: inputs[7]?.value || "",
+            rowStatus: inputs[8]?.value || "",
+            pkgs: Number(inputs[9]?.value || 0),
+            gwt: Number(inputs[10]?.value || 0),
+            cbm: Number(inputs[11]?.value || 0),
+            principal: inputs[12]?.value || "",
+            slot: inputs[13]?.value || "",
+            yard: inputs[14]?.value || "",
+            pod: inputs[15]?.value || "",
+            destination: inputs[16]?.value || "",
+          };
+        });
+        const filledContainers = containerRows.filter((r) =>
+          [r.containerNo, r.sealNo, r.destination].some((v) => String(v || "").trim() !== "")
+        );
+        payload.numberOfContainers = filledContainers.length || containerRows.length || 1;
+        if (!payload.cargo || payload.cargo === "General") payload.cargo = `${payload.numberOfContainers} Container(s)`;
+
         const shipmentRes = await fetch("/api/china-dubai/shipments", {
           method: "POST",
           headers: {
@@ -266,39 +301,16 @@
 
         const shipmentId = shipmentJson?.data?.id;
         if (shipmentId) {
-          const rows = Array.from(document.querySelectorAll(`#${TABLE_BODY_ID} tr`));
-          for (const tr of rows) {
-            const values = Array.from(tr.querySelectorAll("input,select")).map((el) => el.value);
-            const [
-              , // checkbox
-              containerNo,
-              sealNo,
-              size,
-              type,
-              shipType,
-              ediCode,
-              ctg,
-              rowStatus,
-              pkgs,
-              gwt,
-              cbm,
-              principal,
-              slot,
-              yard,
-              pod,
-              containerDestination,
-            ] = values;
-
+          for (const row of filledContainers) {
             const containerPayload = {
               shipmentId,
-              containerNo,
-              sealNo,
-              size,
-              type,
-              weight: Number(gwt || 0),
-              status: rowStatus || "active",
+              containerNo: row.containerNo,
+              sealNo: row.sealNo,
+              size: row.size,
+              type: row.type,
+              weight: Number(row.gwt || 0),
+              status: row.rowStatus || "active",
             };
-            if (!containerPayload.containerNo && !containerPayload.sealNo) continue;
             await fetch("/api/china-dubai/containers", {
               method: "POST",
               headers: {
@@ -311,6 +323,8 @@
         }
 
         alert("Shipment saved successfully.");
+        localStorage.setItem("china_manifest_refresh", "1");
+        showShipmentDetails(shipmentJson.data);
         hideModal();
         // Force list refresh so newly saved row appears immediately
         setTimeout(() => window.location.reload(), 150);
@@ -468,6 +482,227 @@
       },
       true
     );
+  }
+
+  function ensureDetailsModal() {
+    if (document.getElementById(DETAIL_MODAL_ID)) return;
+    const wrap = document.createElement("div");
+    wrap.id = DETAIL_MODAL_ID;
+    wrap.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:10020;display:none;";
+    wrap.innerHTML = `
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(920px,95vw);max-height:90vh;overflow:auto;background:#fff;border:1px solid #dbe3ef;border-radius:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #e6ebf2;">
+          <div style="font-size:18px;font-weight:700;color:#0f172a;">Shipment Details</div>
+          <button id="chinaDetailClose" type="button" style="border:none;background:transparent;font-size:28px;cursor:pointer;color:#64748b;">×</button>
+        </div>
+        <div id="chinaDetailBody" style="padding:14px;"></div>
+      </div>
+    `;
+    document.body.appendChild(wrap);
+    wrap.addEventListener("click", (e) => {
+      if (e.target === wrap) wrap.style.display = "none";
+    });
+    wrap.querySelector("#chinaDetailClose").addEventListener("click", () => {
+      wrap.style.display = "none";
+    });
+  }
+
+  function showShipmentDetails(record) {
+    ensureDetailsModal();
+    const modal = document.getElementById(DETAIL_MODAL_ID);
+    const body = document.getElementById("chinaDetailBody");
+    if (!modal || !body) return;
+    const pretty = Object.entries(record || {}).map(([k, v]) => `
+      <div style="display:grid;grid-template-columns:220px 1fr;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9;">
+        <div style="font-weight:700;color:#334155;">${k}</div>
+        <div style="color:#0f172a;word-break:break-word;">${v == null ? "" : String(v)}</div>
+      </div>
+    `).join("");
+    body.innerHTML = pretty || "<div>No record details found.</div>";
+    modal.style.display = "block";
+  }
+
+  async function loadShipmentByReference(referenceText) {
+    const token = localStorage.getItem("erp_token");
+    if (!token) throw new Error("Login required.");
+    const res = await fetch("/api/china-dubai/shipments", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.success) throw new Error(json.message || "Failed to load shipments.");
+    const rows = Array.isArray(json.data) ? json.data : [];
+    if (!referenceText) return rows[0] || null;
+    const ref = referenceText.trim().toLowerCase();
+    return rows.find((r) => String(r.reference || "").trim().toLowerCase() === ref)
+      || rows.find((r) => String(r.master_bl_no || "").trim().toLowerCase() === ref)
+      || rows[0]
+      || null;
+  }
+
+  function injectRowActions() {
+    const table = document.querySelector("table");
+    if (!table) return;
+    const headRow = table.querySelector("thead tr");
+    const bodyRows = Array.from(table.querySelectorAll("tbody tr"));
+    if (!headRow || !bodyRows.length) return;
+
+    const ths = Array.from(headRow.querySelectorAll("th"));
+    const hasRef = ths.some((th) => /reference/i.test(th.textContent || ""));
+    const hasActions = ths.some((th) => /actions/i.test(th.textContent || ""));
+    if (!hasRef) return;
+
+    if (!hasActions) {
+      const th = document.createElement("th");
+      th.textContent = "ACTIONS";
+      headRow.appendChild(th);
+    }
+
+    bodyRows.forEach((tr) => {
+      if (tr.querySelector(".china-row-actions")) return;
+      const td = document.createElement("td");
+      td.className = "china-row-actions";
+      td.style.whiteSpace = "nowrap";
+      td.innerHTML = `
+        <button type="button" class="cfo-btn" data-view-row>View</button>
+        <button type="button" class="cfo-btn cfo-btn-primary" data-details-row style="margin-left:6px;">Details</button>
+      `;
+      tr.appendChild(td);
+    });
+  }
+
+  function getMainBoardRoot() {
+    const marker = Array.from(document.querySelectorAll("h1,h2,h3,div,span")).find((el) =>
+      /china\s*&?\s*dubai\s*shipments/i.test((el.textContent || "").trim())
+    );
+    if (!marker) return null;
+    return marker.closest("section,main,article,div")?.parentElement || marker.closest("section,main,article,div");
+  }
+
+  async function fetchWithAuth(url, options = {}) {
+    const token = localStorage.getItem("erp_token");
+    if (!token) throw new Error("Login required.");
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(options.headers || {}),
+      },
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.success) throw new Error(json.message || `Request failed (${res.status})`);
+    return json;
+  }
+
+  async function renderContainerManifestBoard() {
+    const root = getMainBoardRoot();
+    if (!root) return;
+    let board = document.getElementById(CONTAINER_BOARD_ID);
+    if (!board) {
+      board = document.createElement("div");
+      board.id = CONTAINER_BOARD_ID;
+      board.className = "china-manifest-board";
+      board.innerHTML = `
+        <div class="china-manifest-head">
+          <span>Containers - Manifest HBL</span>
+          <button type="button" class="cfo-btn" id="refreshManifestBoard">Refresh</button>
+        </div>
+        <div class="china-manifest-wrap">
+          <table class="china-manifest-table">
+            <thead>
+              <tr><th>#</th><th>Shipment</th><th>Container No</th><th>Seal No</th><th>Size</th><th>Type</th><th>HBL</th><th>Action</th></tr>
+            </thead>
+            <tbody id="manifestRows"><tr><td colspan="8">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      `;
+      root.appendChild(board);
+    }
+
+    const tbody = document.getElementById("manifestRows");
+    if (!tbody) return;
+    try {
+      const containers = (await fetchWithAuth("/api/china-dubai/containers")).data || [];
+      const hblRows = (await fetchWithAuth("/api/hbl-tracking")).data || [];
+      if (!containers.length) {
+        tbody.innerHTML = `<tr><td colspan="8">No containers found yet.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = containers.map((c, i) => {
+        const hbl = hblRows.find((h) => String(h.container_no || "").trim().toLowerCase() === String(c.container_no || "").trim().toLowerCase());
+        return `<tr>
+          <td>${i + 1}</td>
+          <td>${c.shipment_id || ""}</td>
+          <td>${c.container_no || ""}</td>
+          <td>${c.seal_no || ""}</td>
+          <td>${c.size || ""}</td>
+          <td>${c.type || ""}</td>
+          <td>${hbl ? (hbl.hbl_no || "Created") : "-"}</td>
+          <td><button type="button" class="cfo-btn cfo-btn-primary manifest-hbl-btn" data-container='${JSON.stringify(c).replace(/'/g, "&#39;")}'>Manifest HBL</button></td>
+        </tr>`;
+      }).join("");
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="8">${err.message || "Failed to load containers."}</td></tr>`;
+    }
+  }
+
+  async function createManifestForContainer(container) {
+    const hblNo = prompt(`Enter HBL No for container ${container.container_no || ""}`);
+    if (!hblNo) return;
+    await fetchWithAuth("/api/hbl-tracking", {
+      method: "POST",
+      body: JSON.stringify({
+        hblNo,
+        customerName: "China Dubai Client",
+        containerNo: container.container_no || "",
+        containerSize: container.size || "",
+        weight: Number(container.weight || 0),
+        status: "Active",
+        jobNo: container.shipment_id ? `SH-${container.shipment_id}` : "",
+        remarks: `Manifest created from China->Dubai`,
+      }),
+    });
+    alert("Manifest HBL created.");
+    await renderContainerManifestBoard();
+  }
+
+  document.addEventListener("click", async (e) => {
+    const viewBtn = e.target.closest("[data-view-row]");
+    const detailsBtn = e.target.closest("[data-details-row]");
+    if (!viewBtn && !detailsBtn) return;
+    try {
+      const tr = (viewBtn || detailsBtn).closest("tr");
+      const referenceCell = tr ? tr.querySelector("td") : null;
+      const record = await loadShipmentByReference(referenceCell ? referenceCell.textContent : "");
+      if (!record) throw new Error("No shipment record found.");
+      showShipmentDetails(record);
+    } catch (err) {
+      alert(err?.message || "Failed to open shipment details.");
+    }
+
+    const refreshBtn = e.target.closest("#refreshManifestBoard");
+    if (refreshBtn) {
+      await renderContainerManifestBoard();
+      return;
+    }
+
+    const manifestBtn = e.target.closest(".manifest-hbl-btn");
+    if (manifestBtn) {
+      try {
+        const c = JSON.parse(manifestBtn.getAttribute("data-container") || "{}");
+        await createManifestForContainer(c);
+      } catch (err) {
+        alert(err?.message || "Failed to create Manifest HBL.");
+      }
+      return;
+    }
+  }, true);
+
+  setInterval(injectRowActions, 1200);
+  setTimeout(renderContainerManifestBoard, 1200);
+  if (localStorage.getItem("china_manifest_refresh") === "1") {
+    localStorage.removeItem("china_manifest_refresh");
+    setTimeout(renderContainerManifestBoard, 1800);
   }
 
   injectStyles();
