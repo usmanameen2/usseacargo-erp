@@ -8,6 +8,7 @@
   const CONTAINER_BOARD_ID = "chinaContainerManifestBoard";
   const CONTAINERS_SUBMENU_PANEL_ID = "chinaContainersSubmenuPanel";
   const CHINA_CONTAINERS_INLINE_ID = "chinaContainersInlineSection";
+  const CHINA_CONTAINERS_WRAP_ID = "chinaContainersMountWrap";
   const CONTAINERS_PAGE_SIZE = 20;
   let containersCurrentPage = 1;
   let containersAllRows = [];
@@ -641,7 +642,7 @@
 
   function getInlineContainersAnchor() {
     const summary = getSummaryBarElement();
-    if (summary && summary.parentElement) return { parent: summary.parentElement, after: summary };
+    if (summary && summary.parentElement) return { summary };
 
     const noDataNode = Array.from(document.querySelectorAll("div,span,p"))
       .find((el) => ((el.textContent || "").trim().toLowerCase() === "no data found"));
@@ -652,10 +653,30 @@
         if (rect.width > 650 && rect.top < 900 && rect.height > 80) break;
         board = board.parentElement;
       }
-      if (board && board.parentElement) return { parent: board.parentElement, after: board };
+      if (board && board.parentElement) return { summary: board };
     }
 
     return null;
+  }
+
+  function ensureContainersMountWrap(summaryEl) {
+    if (!summaryEl || !summaryEl.parentElement) return null;
+    let wrap = document.getElementById(CHINA_CONTAINERS_WRAP_ID);
+    if (wrap && wrap.contains(summaryEl)) return wrap;
+
+    const parent = summaryEl.parentElement;
+    wrap = document.createElement("div");
+    wrap.id = CHINA_CONTAINERS_WRAP_ID;
+    wrap.style.width = "100%";
+    wrap.style.display = "block";
+    wrap.style.margin = "0";
+    wrap.style.padding = "0";
+    wrap.style.position = "relative";
+    wrap.style.zIndex = "1";
+
+    parent.insertBefore(wrap, summaryEl);
+    wrap.appendChild(summaryEl);
+    return wrap;
   }
 
   async function fetchWithAuth(url, options = {}) {
@@ -756,11 +777,14 @@
     if (!(location.hash || "").includes("china-dubai")) return;
 
     const anchor = getInlineContainersAnchor();
-    if (!anchor?.parent) {
+    if (!anchor?.summary) {
       const old = document.getElementById(CHINA_CONTAINERS_INLINE_ID);
       if (old) old.remove();
       return;
     }
+
+    const mountWrap = ensureContainersMountWrap(anchor.summary);
+    if (!mountWrap) return;
 
     let section = document.getElementById(CHINA_CONTAINERS_INLINE_ID);
     if (!section) {
@@ -791,9 +815,8 @@
       `;
     }
 
-    if (section.parentNode !== anchor.parent || (anchor.after && section.previousSibling !== anchor.after)) {
-      if (anchor.after) anchor.after.insertAdjacentElement("afterend", section);
-      else anchor.parent.appendChild(section);
+    if (section.parentNode !== mountWrap || section.previousSibling !== anchor.summary) {
+      anchor.summary.insertAdjacentElement("afterend", section);
     }
 
     const tbody = document.getElementById("chinaInlineContainersRows");
