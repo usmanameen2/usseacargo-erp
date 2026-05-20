@@ -614,6 +614,14 @@
   }
 
   function getVisibleContainerAnchor() {
+    // Hard anchor to the visible China page header area
+    const heading = Array.from(document.querySelectorAll("h1,h2,h3,div,span")).find((el) =>
+      /china\s*&?\s*dubai\s*shipments/i.test((el.textContent || "").trim())
+    );
+    if (heading) {
+      const headerBlock = heading.closest("div");
+      if (headerBlock) return headerBlock.parentElement || headerBlock;
+    }
     const totalEl = Array.from(document.querySelectorAll("div,span,p")).find((el) =>
       /\btotal\s*:/i.test((el.textContent || "").trim())
     );
@@ -770,7 +778,8 @@
       }
     } else {
       panel.style.display = "block";
-      if (anchor.parentNode && panel.previousSibling !== anchor) {
+      if (anchor.parentNode) {
+        // Keep this table directly under the China shipment header block
         anchor.parentNode.insertBefore(panel, anchor.nextSibling);
       }
     }
