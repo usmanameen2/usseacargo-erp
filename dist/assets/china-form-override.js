@@ -639,6 +639,16 @@
     return null;
   }
 
+  function getInlineContainersAnchor() {
+    const summary = getSummaryBarElement();
+    if (summary && summary.parentElement) return { parent: summary.parentElement, after: summary };
+    const root = getMainBoardRoot();
+    if (root) return { parent: root, after: null };
+    const appRoot = document.querySelector("#root");
+    if (appRoot) return { parent: appRoot, after: null };
+    return null;
+  }
+
   async function fetchWithAuth(url, options = {}) {
     const token = localStorage.getItem("erp_token");
     if (!token) throw new Error("Login required.");
@@ -736,8 +746,8 @@
   async function renderInlineContainersTable() {
     if (!(location.hash || "").includes("china-dubai")) return;
 
-    const summaryBar = getSummaryBarElement();
-    if (!summaryBar || !summaryBar.parentElement) return;
+    const anchor = getInlineContainersAnchor();
+    if (!anchor?.parent) return;
 
     let section = document.getElementById(CHINA_CONTAINERS_INLINE_ID);
     if (!section) {
@@ -768,8 +778,9 @@
       `;
     }
 
-    if (section.parentNode !== summaryBar.parentElement || section.previousSibling !== summaryBar) {
-      summaryBar.insertAdjacentElement("afterend", section);
+    if (section.parentNode !== anchor.parent || (anchor.after && section.previousSibling !== anchor.after)) {
+      if (anchor.after) anchor.after.insertAdjacentElement("afterend", section);
+      else anchor.parent.appendChild(section);
     }
 
     const tbody = document.getElementById("chinaInlineContainersRows");
@@ -780,12 +791,36 @@
         fetchWithAuth("/api/china-dubai/containers"),
         fetchWithAuth("/api/china-dubai/shipments"),
       ]);
-      const containers = Array.isArray(cjson.data) ? cjson.data : [];
+      let containers = Array.isArray(cjson.data) ? cjson.data : [];
       const shipments = Array.isArray(sjson.data) ? sjson.data : [];
       const byId = new Map(shipments.map((s) => [String(s.id), s]));
 
+      // Fallback: if container rows are missing in DB, build placeholders from shipment count.
+      if (!containers.length && shipments.length) {
+        const fallback = [];
+        shipments.forEach((s) => {
+          const n = Math.max(1, Number(s.number_of_containers || 0));
+          for (let i = 0; i < n; i++) {
+            fallback.push({
+              id: `${s.id}-${i + 1}`,
+              shipment_id: s.id,
+              container_no: "",
+              seal_no: "",
+              size: "",
+              type: "",
+              status: "pending",
+              weight: 0,
+              created_at: s.created_at,
+            });
+          }
+        });
+        containers = fallback;
+      }
+
       if (!containers.length) {
         tbody.innerHTML = `<tr><td colspan="10">No containers found.</td></tr>`;
+        const pageInfo = document.getElementById("inlineContainersPageInfo");
+        if (pageInfo) pageInfo.textContent = `Page 1 / 1 (20 rows)`;
         return;
       }
 
