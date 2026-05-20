@@ -8,7 +8,6 @@
   const CONTAINER_BOARD_ID = "chinaContainerManifestBoard";
   const CONTAINERS_SUBMENU_PANEL_ID = "chinaContainersSubmenuPanel";
   const CHINA_CONTAINERS_INLINE_ID = "chinaContainersInlineSection";
-  const CHINA_CONTAINERS_WRAP_ID = "chinaContainersMountWrap";
   const CONTAINERS_PAGE_SIZE = 20;
   let containersCurrentPage = 1;
   let containersAllRows = [];
@@ -641,42 +640,25 @@
   }
 
   function getInlineContainersAnchor() {
-    const summary = getSummaryBarElement();
-    if (summary && summary.parentElement) return { summary };
-
-    const noDataNode = Array.from(document.querySelectorAll("div,span,p"))
-      .find((el) => ((el.textContent || "").trim().toLowerCase() === "no data found"));
-    if (noDataNode) {
-      let board = noDataNode.closest("section,article,div");
-      for (let i = 0; i < 6 && board; i++) {
-        const rect = board.getBoundingClientRect ? board.getBoundingClientRect() : { width: 0, top: 0, height: 0 };
-        if (rect.width > 650 && rect.top < 900 && rect.height > 80) break;
-        board = board.parentElement;
-      }
-      if (board && board.parentElement) return { summary: board };
-    }
-
-    return null;
-  }
-
-  function ensureContainersMountWrap(summaryEl) {
-    if (!summaryEl || !summaryEl.parentElement) return null;
-    let wrap = document.getElementById(CHINA_CONTAINERS_WRAP_ID);
-    if (wrap && wrap.contains(summaryEl)) return wrap;
-
-    const parent = summaryEl.parentElement;
-    wrap = document.createElement("div");
-    wrap.id = CHINA_CONTAINERS_WRAP_ID;
-    wrap.style.width = "100%";
-    wrap.style.display = "block";
-    wrap.style.margin = "0";
-    wrap.style.padding = "0";
-    wrap.style.position = "relative";
-    wrap.style.zIndex = "1";
-
-    parent.insertBefore(wrap, summaryEl);
-    wrap.appendChild(summaryEl);
-    return wrap;
+    const candidates = Array.from(document.querySelectorAll("div,span,strong"))
+      .filter((el) => {
+        const t = (el.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
+        return t.includes("total:") && t.includes("shipment");
+      })
+      .map((el) => {
+        let node = el;
+        for (let i = 0; i < 8 && node; i++) {
+          const rect = node.getBoundingClientRect ? node.getBoundingClientRect() : { width: 0, height: 0, top: 9999 };
+          if (rect.width > 700 && rect.height >= 28 && rect.height <= 90 && rect.top > 80 && rect.top < 900) {
+            return { summary: node, top: rect.top };
+          }
+          node = node.parentElement;
+        }
+        return null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.top - b.top);
+    return candidates[0] || null;
   }
 
   async function fetchWithAuth(url, options = {}) {
@@ -777,14 +759,11 @@
     if (!(location.hash || "").includes("china-dubai")) return;
 
     const anchor = getInlineContainersAnchor();
-    if (!anchor?.summary) {
+    if (!anchor?.summary || !anchor.summary.parentElement) {
       const old = document.getElementById(CHINA_CONTAINERS_INLINE_ID);
       if (old) old.remove();
       return;
     }
-
-    const mountWrap = ensureContainersMountWrap(anchor.summary);
-    if (!mountWrap) return;
 
     let section = document.getElementById(CHINA_CONTAINERS_INLINE_ID);
     if (!section) {
@@ -815,7 +794,12 @@
       `;
     }
 
-    if (section.parentNode !== mountWrap || section.previousSibling !== anchor.summary) {
+    section.style.position = "static";
+    section.style.width = "100%";
+    section.style.marginTop = "14px";
+    section.style.marginBottom = "0";
+    section.style.zIndex = "auto";
+    if (section.parentNode !== anchor.summary.parentElement || section.previousSibling !== anchor.summary) {
       anchor.summary.insertAdjacentElement("afterend", section);
     }
 
