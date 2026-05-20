@@ -528,6 +528,16 @@ app.use(express.static(distPath, {
     if (filePath.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript');
     if (filePath.endsWith('.css')) res.setHeader('Content-Type', 'text/css');
     if (filePath.endsWith('.html')) res.setHeader('Content-Type', 'text/html');
+    // Always fetch fresh app shell and override script after deploy
+    if (
+      filePath.endsWith(path.join('dist', 'index.html')) ||
+      filePath.endsWith(path.join('assets', 'china-form-override.js'))
+    ) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.setHeader('Surrogate-Control', 'no-store');
+    }
   }
 }));
 
@@ -538,6 +548,9 @@ app.use('/api/*', (req, res) => {
 
 // SPA fallback - only for non-file requests
 app.get('*', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
