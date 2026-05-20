@@ -221,10 +221,97 @@
     modal.querySelector("#cfoSubmit").addEventListener("click", () => {
       modal.querySelector("#cfoForm").requestSubmit();
     });
-    modal.querySelector("#cfoForm").addEventListener("submit", (e) => {
+    modal.querySelector("#cfoForm").addEventListener("submit", async (e) => {
       e.preventDefault();
-      alert("Form captured successfully (frontend demo).");
-      hideModal();
+      const submitBtn = modal.querySelector("#cfoSubmit");
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Saving...";
+      }
+      try {
+        const token = localStorage.getItem("erp_token");
+        if (!token) throw new Error("Login required. Please login again.");
+
+        const formEl = modal.querySelector("#cfoForm");
+        const payload = Object.fromEntries(new FormData(formEl).entries());
+        payload.cost = Number(payload.cost || 0);
+        payload.revenue = Number(payload.revenue || 0);
+        payload.usdBuyingExRate = Number(payload.usdBuyingExRate || 0);
+        payload.usdSellingExRate = Number(payload.usdSellingExRate || 0);
+        payload.profit = Number((payload.revenue || 0) - (payload.cost || 0));
+        payload.margin = payload.revenue > 0 ? Number(((payload.profit / payload.revenue) * 100).toFixed(2)) : 0;
+        if (!payload.shipmentNo) payload.shipmentNo = payload.reference || `SH-${Date.now()}`;
+        if (!payload.status) payload.status = "draft";
+
+        const shipmentRes = await fetch("/api/china-dubai/shipments", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+        const shipmentJson = await shipmentRes.json().catch(() => ({}));
+        if (!shipmentRes.ok || !shipmentJson.success) {
+          throw new Error(shipmentJson.message || `Shipment save failed (${shipmentRes.status})`);
+        }
+
+        const shipmentId = shipmentJson?.data?.id;
+        if (shipmentId) {
+          const rows = Array.from(document.querySelectorAll(`#${TABLE_BODY_ID} tr`));
+          for (const tr of rows) {
+            const values = Array.from(tr.querySelectorAll("input,select")).map((el) => el.value);
+            const [
+              , // checkbox
+              containerNo,
+              sealNo,
+              size,
+              type,
+              shipType,
+              ediCode,
+              ctg,
+              rowStatus,
+              pkgs,
+              gwt,
+              cbm,
+              principal,
+              slot,
+              yard,
+              pod,
+              containerDestination,
+            ] = values;
+
+            const containerPayload = {
+              shipmentId,
+              containerNo,
+              sealNo,
+              size,
+              type,
+              weight: Number(gwt || 0),
+              status: rowStatus || "active",
+            };
+            if (!containerPayload.containerNo && !containerPayload.sealNo) continue;
+            await fetch("/api/china-dubai/containers", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify(containerPayload),
+            });
+          }
+        }
+
+        alert("Shipment saved successfully.");
+        hideModal();
+      } catch (err) {
+        alert(err?.message || "Failed to save shipment.");
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Submit";
+        }
+      }
     });
 
     addRow();
@@ -376,4 +463,3 @@
   injectStyles();
   bindGlobalEvents();
 })();
-
