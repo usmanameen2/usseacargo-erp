@@ -242,6 +242,14 @@
         payload.margin = payload.revenue > 0 ? Number(((payload.profit / payload.revenue) * 100).toFixed(2)) : 0;
         if (!payload.shipmentNo) payload.shipmentNo = payload.reference || `SH-${Date.now()}`;
         if (!payload.status) payload.status = "draft";
+        // Compatibility fields used by China->Dubai list table on this screen
+        payload.reference = payload.reference || payload.masterBLNo || payload.shipmentNo;
+        payload.client = payload.client || payload.agent || "Client";
+        payload.cargo = payload.cargo || payload.shipmentType || "General";
+        payload.origin = payload.origin || payload.portOfLoading || "";
+        payload.destination = payload.destination || payload.portOfDischarge || "";
+        payload.etd = payload.etd || payload.etdPol || "";
+        payload.eta = payload.eta || payload.etaJebelAli || "";
 
         const shipmentRes = await fetch("/api/china-dubai/shipments", {
           method: "POST",
@@ -304,6 +312,8 @@
 
         alert("Shipment saved successfully.");
         hideModal();
+        // Force list refresh so newly saved row appears immediately
+        setTimeout(() => window.location.reload(), 150);
       } catch (err) {
         alert(err?.message || "Failed to save shipment.");
       } finally {
