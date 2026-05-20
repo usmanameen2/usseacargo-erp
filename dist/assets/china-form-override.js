@@ -627,14 +627,17 @@
       portal.style.marginTop = "12px";
     }
 
-    const totalLabel = Array.from(document.querySelectorAll("div,span,strong"))
-      .find((el) => /total\s*:/i.test((el.textContent || "").trim()));
-    if (totalLabel) {
-      // pick nearest small/visible summary bar, then insert immediately after it
-      let summaryCard = totalLabel;
-      for (let i = 0; i < 8 && summaryCard; i++) {
+    const totalLabels = Array.from(document.querySelectorAll("div,span,strong"))
+      .filter((el) => /total\s*:/i.test((el.textContent || "").trim()));
+    const topLabel = totalLabels
+      .map((el) => ({ el, rect: el.getBoundingClientRect() }))
+      .filter((x) => x.rect.width > 80 && x.rect.top > 80 && x.rect.top < 650)
+      .sort((a, b) => a.rect.top - b.rect.top)[0];
+    if (topLabel) {
+      let summaryCard = topLabel.el;
+      for (let i = 0; i < 10 && summaryCard; i++) {
         const rect = summaryCard.getBoundingClientRect ? summaryCard.getBoundingClientRect() : { width: 0, height: 0 };
-        if (rect.width > 500 && rect.height > 28 && rect.height < 140) break;
+        if (rect.width > 700 && rect.height > 28 && rect.height < 140) break;
         summaryCard = summaryCard.parentElement;
       }
       if (summaryCard && summaryCard.parentElement) {
@@ -647,7 +650,12 @@
     const noDataNode = Array.from(document.querySelectorAll("div,span,p"))
       .find((el) => ((el.textContent || "").trim().toLowerCase() === "no data found"));
     if (noDataNode) {
-      const board = noDataNode.closest("section,article,div");
+      let board = noDataNode.closest("section,article,div");
+      for (let i = 0; i < 6 && board; i++) {
+        const rect = board.getBoundingClientRect ? board.getBoundingClientRect() : { width: 0, height: 0 };
+        if (rect.width > 700 && rect.height > 120 && rect.top < 700) break;
+        board = board.parentElement;
+      }
       if (board && board.parentElement) {
         board.insertAdjacentElement("afterend", portal);
         return portal;
@@ -659,11 +667,8 @@
     const fallbackParent = header?.closest("section,main,article,div")?.parentElement || document.querySelector("#root");
     if (!fallbackParent) return null;
     // Final fallback: force near top of content flow.
-    if (fallbackParent.firstElementChild) {
-      fallbackParent.firstElementChild.insertAdjacentElement("afterend", portal);
-    } else {
-      fallbackParent.appendChild(portal);
-    }
+    if (fallbackParent.firstElementChild) fallbackParent.firstElementChild.insertAdjacentElement("afterend", portal);
+    else fallbackParent.appendChild(portal);
     return portal;
   }
 
