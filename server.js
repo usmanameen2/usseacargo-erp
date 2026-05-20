@@ -403,7 +403,8 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
 });
 
 // ─── HBL CUSTOMER REPORT ─────────────────────────────────────
-app.get('/api/hbl-tracking/customer-report', requireAuth, async (req, res) => {
+// NOTE: These routes are at /api/hbl-reports/* to avoid conflict with /api/hbl-tracking/:id
+app.get('/api/hbl-reports/customer', requireAuth, async (req, res) => {
   try {
     const rows = await db.all(`
       SELECT customer_name, customer_company,
@@ -419,7 +420,7 @@ app.get('/api/hbl-tracking/customer-report', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-app.get('/api/hbl-tracking/container-report', requireAuth, async (req, res) => {
+app.get('/api/hbl-reports/container', requireAuth, async (req, res) => {
   try {
     const rows = await db.all(`
       SELECT container_no, container_size,
@@ -435,7 +436,7 @@ app.get('/api/hbl-tracking/container-report', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-app.get('/api/hbl-tracking/search-by-hbl', requireAuth, async (req, res) => {
+app.get('/api/hbl-reports/search', requireAuth, async (req, res) => {
   try {
     const hblNo = req.query.hbl_no || '';
     if (!hblNo) return res.status(400).json({ success: false, message: 'hbl_no query required' });
