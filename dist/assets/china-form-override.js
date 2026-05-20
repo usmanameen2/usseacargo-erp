@@ -338,8 +338,11 @@
         localStorage.setItem("china_manifest_refresh", "1");
         showShipmentDetails(shipmentJson.data);
         hideModal();
-        // Force list refresh so newly saved row appears immediately
-        setTimeout(() => window.location.reload(), 150);
+        // Stay on China page; refresh panels in-place
+        setTimeout(() => {
+          renderContainerManifestBoard().catch(() => {});
+          renderContainersSubmenuPanel().catch(() => {});
+        }, 250);
       } catch (err) {
         alert(err?.message || "Failed to save shipment.");
       } finally {
