@@ -642,10 +642,19 @@
   function getInlineContainersAnchor() {
     const summary = getSummaryBarElement();
     if (summary && summary.parentElement) return { parent: summary.parentElement, after: summary };
-    const root = getMainBoardRoot();
-    if (root) return { parent: root, after: null };
-    const appRoot = document.querySelector("#root");
-    if (appRoot) return { parent: appRoot, after: null };
+
+    const noDataNode = Array.from(document.querySelectorAll("div,span,p"))
+      .find((el) => ((el.textContent || "").trim().toLowerCase() === "no data found"));
+    if (noDataNode) {
+      let board = noDataNode.closest("section,article,div");
+      for (let i = 0; i < 6 && board; i++) {
+        const rect = board.getBoundingClientRect ? board.getBoundingClientRect() : { width: 0, top: 0, height: 0 };
+        if (rect.width > 650 && rect.top < 900 && rect.height > 80) break;
+        board = board.parentElement;
+      }
+      if (board && board.parentElement) return { parent: board.parentElement, after: board };
+    }
+
     return null;
   }
 
@@ -747,7 +756,11 @@
     if (!(location.hash || "").includes("china-dubai")) return;
 
     const anchor = getInlineContainersAnchor();
-    if (!anchor?.parent) return;
+    if (!anchor?.parent) {
+      const old = document.getElementById(CHINA_CONTAINERS_INLINE_ID);
+      if (old) old.remove();
+      return;
+    }
 
     let section = document.getElementById(CHINA_CONTAINERS_INLINE_ID);
     if (!section) {
