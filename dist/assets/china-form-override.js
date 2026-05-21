@@ -911,6 +911,8 @@
       <button type="button" data-row-action="summary">Summary</button>
       <button type="button" data-row-action="job">Job</button>
       <button type="button" data-row-action="manifest-hbl">Manifest HBL</button>
+      <button type="button" data-row-action="arrival-notice">Arrival Notice</button>
+      <button type="button" data-row-action="container-invoice">Container Invoice</button>
       <button type="button" data-row-action="job-costing">Job Costing</button>
       <button type="button" data-row-action="port-documents">Port Documents</button>
       <button type="button" data-row-action="ts-connection-list">T/S Connection List</button>
