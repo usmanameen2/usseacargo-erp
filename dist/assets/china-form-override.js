@@ -658,37 +658,8 @@
       })
       .filter(Boolean)
       .sort((a, b) => a.top - b.top);
-    if (candidates[0]) return candidates[0];
-
-    // Live fallback: place below the main shipments board title area.
-    const heading = Array.from(document.querySelectorAll("h1,h2,h3,div,span"))
-      .find((el) => /china\s*&?\s*dubai\s*shipments/i.test((el.textContent || "").trim()));
-    if (heading) {
-      let board = heading.closest("section,article,div");
-      for (let i = 0; i < 8 && board; i++) {
-        const rect = board.getBoundingClientRect ? board.getBoundingClientRect() : { width: 0, top: 9999, height: 0 };
-        if (rect.width > 700 && rect.top < 900 && rect.height > 160) {
-          return { summary: board, top: rect.top };
-        }
-        board = board.parentElement;
-      }
-    }
-
-    // Secondary live fallback: after visible "No data found" region.
-    const noData = Array.from(document.querySelectorAll("div,span,p"))
-      .find((el) => (el.textContent || "").trim().toLowerCase() === "no data found");
-    if (noData) {
-      let box = noData.closest("section,article,div");
-      for (let i = 0; i < 8 && box; i++) {
-        const rect = box.getBoundingClientRect ? box.getBoundingClientRect() : { width: 0, top: 9999, height: 0 };
-        if (rect.width > 700 && rect.top < 950 && rect.height > 120) {
-          return { summary: box, top: rect.top };
-        }
-        box = box.parentElement;
-      }
-    }
-
-    return null;
+    // Strict mode: only bind to top summary bar. If not found, do not render.
+    return candidates[0] || null;
   }
 
   async function fetchWithAuth(url, options = {}) {
