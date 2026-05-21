@@ -785,11 +785,12 @@
           <table class="china-inline-containers-table">
             <thead>
               <tr>
-                <th>#</th><th>Reference</th><th>Client</th><th>Container No</th><th>Seal No</th>
-                <th>Size</th><th>Type</th><th>Status</th><th>Weight</th><th>Created At</th>
+                <th>Date</th><th>Job Type</th><th>Job No</th><th>MBL No</th><th>Vessel</th>
+                <th>Voyage</th><th>ETD Pol</th><th>ETA JEA</th><th>Port of Loading</th><th>Liner</th>
+                <th>Agent</th><th>Container No</th><th>Total BL</th><th>20 FT</th><th>40 FT</th>
               </tr>
             </thead>
-            <tbody id="chinaInlineContainersRows"><tr><td colspan="10">Loading...</td></tr></tbody>
+            <tbody id="chinaInlineContainersRows"><tr><td colspan="15">Loading...</td></tr></tbody>
           </table>
         </div>
       `;
@@ -839,7 +840,7 @@
       }
 
       if (!containers.length) {
-        tbody.innerHTML = `<tr><td colspan="10">No containers found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="15">No containers found.</td></tr>`;
         const pageInfo = document.getElementById("inlineContainersPageInfo");
         if (pageInfo) pageInfo.textContent = `Page 1 / 1 (20 rows)`;
         return;
@@ -863,21 +864,29 @@
 
       tbody.innerHTML = pageRows.map((c, i) => {
         const s = byId.get(String(c.shipment_id)) || {};
+        const sizeText = String(c.size || "");
+        const is20 = sizeText.startsWith("20");
+        const is40 = sizeText.startsWith("40");
         return `<tr>
-          <td>${start + i + 1}</td>
-          <td>${s.reference || s.shipment_no || ""}</td>
-          <td>${s.client || ""}</td>
+          <td>${fmtDate(s.created_at || c.created_at)}</td>
+          <td>${s.job_type || ""}</td>
+          <td>${s.shipment_no || s.reference || ""}</td>
+          <td>${s.master_bl_no || ""}</td>
+          <td>${s.vessel || ""}</td>
+          <td>${s.voyage || ""}</td>
+          <td>${fmtDate(s.etd_pol || s.etd)}</td>
+          <td>${fmtDate(s.eta_jebel_ali || s.eta)}</td>
+          <td>${s.port_of_loading || ""}</td>
+          <td>${s.main_line || ""}</td>
+          <td>${s.agent || ""}</td>
           <td>${c.container_no || ""}</td>
-          <td>${c.seal_no || ""}</td>
-          <td>${c.size || ""}</td>
-          <td>${c.type || ""}</td>
-          <td>${c.status || ""}</td>
-          <td>${Number(c.weight || 0)}</td>
-          <td>${fmtDate(c.created_at)}</td>
+          <td>1</td>
+          <td>${is20 ? 1 : 0}</td>
+          <td>${is40 ? 1 : 0}</td>
         </tr>`;
       }).join("");
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="10">${err.message || "Failed to load containers."}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="15">${err.message || "Failed to load containers."}</td></tr>`;
     }
   }
 
