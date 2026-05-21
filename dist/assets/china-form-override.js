@@ -8,6 +8,7 @@
   const CONTAINER_BOARD_ID = "chinaContainerManifestBoard";
   const CONTAINERS_SUBMENU_PANEL_ID = "chinaContainersSubmenuPanel";
   const CHINA_CONTAINERS_INLINE_ID = "chinaContainersInlineSection";
+  const CHINA_CONTAINER_MENU_ID = "chinaContainerRowMenu";
   const CONTAINERS_PAGE_SIZE = 20;
   let containersCurrentPage = 1;
   let containersAllRows = [];
@@ -107,6 +108,16 @@
       .china-inline-containers-table { width:100%; min-width:1100px; border-collapse:collapse; font-size:12px; }
       .china-inline-containers-table th,.china-inline-containers-table td { border:1px solid #e2e8f0; padding:8px; text-align:left; }
       .china-inline-containers-table th { background:#f8fafc; color:#334155; }
+      .china-inline-containers-table tbody tr { cursor:pointer; }
+      .china-inline-containers-table tbody tr:hover { background:#f8fbff; }
+      .china-row-menu {
+        position: fixed; z-index: 10050; min-width: 240px; background:#fff; border:1px solid #dbe3ef;
+        border-radius:10px; box-shadow:0 12px 30px rgba(15,23,42,.2); overflow:hidden; display:none;
+      }
+      .china-row-menu button {
+        width:100%; text-align:left; border:none; background:#fff; padding:9px 12px; font-size:13px; color:#0f172a; cursor:pointer;
+      }
+      .china-row-menu button:hover { background:#eff6ff; }
     `;
     document.head.appendChild(style);
   }
@@ -867,7 +878,7 @@
         const sizeText = String(c.size || "");
         const is20 = sizeText.startsWith("20");
         const is40 = sizeText.startsWith("40");
-        return `<tr>
+        return `<tr data-container='${JSON.stringify(c).replace(/'/g, "&#39;")}'>
           <td>${fmtDate(s.created_at || c.created_at)}</td>
           <td>${s.job_type || ""}</td>
           <td>${s.shipment_no || s.reference || ""}</td>
@@ -890,7 +901,82 @@
     }
   }
 
+  function ensureContainerRowMenu() {
+    let menu = document.getElementById(CHINA_CONTAINER_MENU_ID);
+    if (menu) return menu;
+    menu = document.createElement("div");
+    menu.id = CHINA_CONTAINER_MENU_ID;
+    menu.className = "china-row-menu";
+    menu.innerHTML = `
+      <button type="button" data-row-action="summary">Summary</button>
+      <button type="button" data-row-action="job">Job</button>
+      <button type="button" data-row-action="manifest-hbl">Manifest HBL</button>
+      <button type="button" data-row-action="job-costing">Job Costing</button>
+      <button type="button" data-row-action="port-documents">Port Documents</button>
+      <button type="button" data-row-action="ts-connection-list">T/S Connection List</button>
+      <button type="button" data-row-action="check-list">Check List</button>
+      <button type="button" data-row-action="file-cover">File Cover</button>
+      <button type="button" data-row-action="noa-delay-notice">NOA / Delay Notice</button>
+      <button type="button" data-row-action="documents-upload">Documents Upload</button>
+    `;
+    document.body.appendChild(menu);
+    return menu;
+  }
+
+  function hideContainerRowMenu() {
+    const menu = document.getElementById(CHINA_CONTAINER_MENU_ID);
+    if (menu) {
+      menu.style.display = "none";
+      menu.removeAttribute("data-container");
+    }
+  }
+
+  function openContainerRowMenu(evt, containerObj) {
+    const menu = ensureContainerRowMenu();
+    menu.style.display = "block";
+    menu.setAttribute("data-container", JSON.stringify(containerObj || {}));
+    const x = evt.clientX || 0;
+    const y = evt.clientY || 0;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const w = 260;
+    const h = 360;
+    menu.style.left = `${Math.min(vw - w - 12, x + 6)}px`;
+    menu.style.top = `${Math.min(vh - h - 12, y + 6)}px`;
+  }
+
   document.addEventListener("click", async (e) => {
+    const row = e.target.closest("#chinaInlineContainersRows tr[data-container]");
+    if (row) {
+      e.preventDefault();
+      const data = row.getAttribute("data-container") || "{}";
+      let containerObj = {};
+      try { containerObj = JSON.parse(data); } catch {}
+      openContainerRowMenu(e, containerObj);
+      return;
+    }
+
+    const actionBtn = e.target.closest(`#${CHINA_CONTAINER_MENU_ID} [data-row-action]`);
+    if (actionBtn) {
+      const action = actionBtn.getAttribute("data-row-action");
+      const menu = document.getElementById(CHINA_CONTAINER_MENU_ID);
+      let containerObj = {};
+      try { containerObj = JSON.parse(menu?.getAttribute("data-container") || "{}"); } catch {}
+      hideContainerRowMenu();
+      if (action === "manifest-hbl") {
+        try {
+          await createManifestForContainer(containerObj);
+        } catch (err) {
+          alert(err?.message || "Failed to create Manifest HBL.");
+        }
+        return;
+      }
+      alert(`${actionBtn.textContent.trim()} selected for Container: ${containerObj.container_no || "-"}`);
+      return;
+    }
+
+    if (!e.target.closest(`#${CHINA_CONTAINER_MENU_ID}`)) hideContainerRowMenu();
+
     const viewBtn = e.target.closest("[data-view-row]");
     const detailsBtn = e.target.closest("[data-details-row]");
     if (viewBtn || detailsBtn) {
