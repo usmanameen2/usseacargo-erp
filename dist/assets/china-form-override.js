@@ -5,6 +5,7 @@
   const TABLE_BODY_ID = "containerRows";
   const COUNT_ID = "containerCount";
   const DETAIL_MODAL_ID = "chinaShipmentDetailModal";
+  const ACTION_MODAL_ID = "chinaContainerActionModal";
   const CONTAINER_BOARD_ID = "chinaContainerManifestBoard";
   const CONTAINERS_SUBMENU_PANEL_ID = "chinaContainersSubmenuPanel";
   const CHINA_CONTAINERS_INLINE_ID = "chinaContainersInlineSection";
@@ -557,6 +558,70 @@
     });
   }
 
+  function ensureActionModal() {
+    let wrap = document.getElementById(ACTION_MODAL_ID);
+    if (wrap) return wrap;
+    wrap = document.createElement("div");
+    wrap.id = ACTION_MODAL_ID;
+    wrap.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:10030;display:none;";
+    wrap.innerHTML = `
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(760px,94vw);max-height:88vh;overflow:auto;background:#fff;border:1px solid #dbe3ef;border-radius:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #e6ebf2;">
+          <div id="containerActionTitle" style="font-size:18px;font-weight:700;color:#0f172a;">Container Action</div>
+          <button id="containerActionClose" type="button" style="border:none;background:transparent;font-size:28px;cursor:pointer;color:#64748b;">×</button>
+        </div>
+        <div style="padding:12px 14px;">
+          <div id="containerActionMeta" style="font-size:12px;color:#475569;margin-bottom:8px;"></div>
+          <textarea id="containerActionText" class="cfo-textarea" style="min-height:120px;" placeholder="Enter details..."></textarea>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;">
+            <button type="button" id="containerActionSave" class="cfo-btn cfo-btn-primary">Save</button>
+          </div>
+          <div id="containerActionHistory" style="margin-top:12px;"></div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(wrap);
+    wrap.addEventListener("click", (e) => { if (e.target === wrap) wrap.style.display = "none"; });
+    wrap.querySelector("#containerActionClose").addEventListener("click", () => { wrap.style.display = "none"; });
+    return wrap;
+  }
+
+  function actionKey(container, action) {
+    return `china_action_${action}_${container?.shipment_id || "x"}_${container?.container_no || "x"}`;
+  }
+
+  function openContainerActionModal(actionLabel, container, onSaveExtra) {
+    const modal = ensureActionModal();
+    const title = modal.querySelector("#containerActionTitle");
+    const meta = modal.querySelector("#containerActionMeta");
+    const text = modal.querySelector("#containerActionText");
+    const save = modal.querySelector("#containerActionSave");
+    const history = modal.querySelector("#containerActionHistory");
+    const key = actionKey(container, actionLabel);
+
+    title.textContent = actionLabel;
+    meta.textContent = `Container: ${container?.container_no || "-"} | Shipment: ${container?.shipment_id || "-"}`;
+    text.value = "";
+
+    const items = JSON.parse(localStorage.getItem(key) || "[]");
+    history.innerHTML = items.length
+      ? items.map((x) => `<div style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;margin-bottom:6px;"><div style="font-size:11px;color:#64748b;">${x.at}</div><div style="font-size:13px;color:#0f172a;">${x.note}</div></div>`).join("")
+      : `<div style="font-size:12px;color:#64748b;">No records yet.</div>`;
+
+    const saveHandler = async () => {
+      const note = (text.value || "").trim();
+      if (!note) { alert("Please enter details."); return; }
+      const arr = JSON.parse(localStorage.getItem(key) || "[]");
+      arr.unshift({ at: new Date().toLocaleString("en-GB"), note });
+      localStorage.setItem(key, JSON.stringify(arr.slice(0, 30)));
+      if (typeof onSaveExtra === "function") await onSaveExtra(note);
+      modal.style.display = "none";
+      alert(`${actionLabel} saved.`);
+    };
+    save.onclick = saveHandler;
+    modal.style.display = "block";
+  }
+
   function showShipmentDetails(record) {
     ensureDetailsModal();
     const modal = document.getElementById(DETAIL_MODAL_ID);
@@ -973,7 +1038,52 @@
         }
         return;
       }
-      alert(`${actionBtn.textContent.trim()} selected for Container: ${containerObj.container_no || "-"}`);
+      if (action === "summary") { showShipmentDetails({ container_no: containerObj.container_no || "", shipment_id: containerObj.shipment_id || "", action: "Summary" }); return; }
+      if (action === "job") { showShipmentDetails({ container_no: containerObj.container_no || "", shipment_id: containerObj.shipment_id || "", action: "Job" }); return; }
+      if (action === "container-invoice") {
+        openContainerActionModal("Container Invoice", containerObj, async (note) => {
+          const invoiceNo = `CINV-${Date.now()}`;
+          await fetchWithAuth("/api/invoices", {
+            method: "POST",
+            body: JSON.stringify({
+              invoiceNo,
+              customerName: "China Dubai Client",
+              amount: 0,
+              total: 0,
+              status: "draft",
+              notes: `Container ${containerObj.container_no || ""}: ${note}`,
+            }),
+          });
+        });
+        return;
+      }
+      if (action === "documents-upload" || action === "port-documents") {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.onchange = async () => {
+          const f = input.files && input.files[0];
+          if (!f) return;
+          try {
+            await fetchWithAuth("/api/shipping-docs", {
+              method: "POST",
+              body: JSON.stringify({
+                jobId: containerObj.shipment_id || null,
+                docType: action === "documents-upload" ? "container-upload" : "port-document",
+                fileName: f.name,
+                filePath: `upload/${f.name}`,
+                uploadedBy: "System Admin",
+                status: "active",
+              }),
+            });
+            alert(`${actionBtn.textContent.trim()} uploaded.`);
+          } catch (err) {
+            alert(err?.message || "Upload failed.");
+          }
+        };
+        input.click();
+        return;
+      }
+      openContainerActionModal(actionBtn.textContent.trim(), containerObj);
       return;
     }
 
