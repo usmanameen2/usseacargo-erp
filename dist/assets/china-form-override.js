@@ -119,6 +119,25 @@
         width:100%; text-align:left; border:none; background:#fff; padding:9px 12px; font-size:13px; color:#0f172a; cursor:pointer;
       }
       .china-row-menu button:hover { background:#eff6ff; }
+      .sea-import-extra-wrap {
+        margin: 10px 0 14px; border:1px solid #dbe3ef; border-radius:12px; padding:12px; background:#fff;
+      }
+      .sea-import-extra-grid {
+        display:grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap:12px 14px;
+      }
+      .sea-import-extra-field label {
+        display:block; font-size:12px; font-weight:700; color:#334155; margin:0 0 6px;
+      }
+      .sea-import-extra-field input,
+      .sea-import-extra-field select,
+      .sea-import-extra-field textarea {
+        width:100%; height:38px; border:1px solid #d3dce8; border-radius:10px; background:#f8fafc; padding:0 10px; box-sizing:border-box;
+      }
+      .sea-import-extra-field textarea { min-height:84px; height:auto; padding:10px; resize:vertical; }
+      .sea-import-extra-full { grid-column:1 / -1; }
+      @media (max-width: 900px) {
+        .sea-import-extra-grid { grid-template-columns:1fr; }
+      }
     `;
     document.head.appendChild(style);
   }
@@ -1151,6 +1170,56 @@
     renderInlineContainersTable().catch(() => {});
   }
 
+  function enhanceSeaImportJobModal() {
+    const heading = Array.from(document.querySelectorAll("h1,h2,h3,div,span"))
+      .find((el) => (el.textContent || "").trim().toLowerCase() === "add sea import job");
+    if (!heading) return;
+    const modal = heading.closest("div[role='dialog'], .modal, [class*='modal'], div");
+    if (!modal) return;
+
+    const containersText = Array.from(modal.querySelectorAll("div,span,label,strong"))
+      .find((el) => /containers/i.test((el.textContent || "").trim()) && /number of containers/i.test((modal.textContent || "").toLowerCase()));
+    if (!containersText) return;
+
+    if (modal.querySelector("#seaImportExtraFields")) return;
+
+    const block = document.createElement("div");
+    block.id = "seaImportExtraFields";
+    block.className = "sea-import-extra-wrap";
+    block.innerHTML = `
+      <div class="sea-import-extra-grid">
+        <div class="sea-import-extra-field"><label>Branch</label><select><option>UAE</option><option>KSA</option><option>OMAN</option><option>QATAR</option></select></div>
+        <div class="sea-import-extra-field"><label>Job Type *</label><select><option>SELECT JOB TYPE</option><option>FCL</option><option>CONSOLE</option><option>CO-LOAD</option><option>CO-LOAD FCL</option><option>BREAKBULK</option><option>DIRECT-FCL</option><option>DIRECT LCL</option></select></div>
+        <div class="sea-import-extra-field"><label>Shipment Type *</label><select><option>COC</option><option>SOC</option><option>FCL</option><option>LCL</option></select></div>
+        <div class="sea-import-extra-field"><label>Agent</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>Port of Loading *</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>ETD POL *</label><input type="date"></div>
+        <div class="sea-import-extra-field"><label>Port of Discharge</label><select><option>JEBEL ALI</option><option>ABU DHABI</option><option>SHARJAH</option></select></div>
+        <div class="sea-import-extra-field"><label>Vessel *</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>Voyage *</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>ETA Jebel Ali *</label><input type="date"></div>
+        <div class="sea-import-extra-field"><label>Discharge Date</label><input type="date"></div>
+        <div class="sea-import-extra-field"><label>Main Line *</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>Master B/L No *</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>Empty Removed By</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>Terminal</label><select><option>Terminal 1</option><option>Terminal 2</option><option>Terminal 3</option></select></div>
+        <div class="sea-import-extra-field"><label>Master B/L Freight Term</label><select><option>SELECT FREIGHT TERM</option><option>PREPAID</option><option>COLLECT</option></select></div>
+        <div class="sea-import-extra-field"><label>Carrier</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>Carrier Ref</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>Serial Number</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>USD Buying Ex. Rate</label><input type="number" step="0.01" value="3.76"></div>
+        <div class="sea-import-extra-field"><label>USD Selling Ex. Rate</label><input type="number" step="0.01" value="3.76"></div>
+        <div class="sea-import-extra-field"><label>Warehouse</label><input type="text"></div>
+        <div class="sea-import-extra-field sea-import-extra-full"><label>Warehouse Remarks</label><textarea></textarea></div>
+      </div>
+    `;
+
+    const containerHeader = containersText.closest("div");
+    if (containerHeader && containerHeader.parentElement) {
+      containerHeader.parentElement.insertBefore(block, containerHeader);
+    }
+  }
+
   setInterval(injectRowActions, 1200);
   // Disabled duplicate legacy board; using only the clean tracker table.
   // setTimeout(renderContainerManifestBoard, 1200);
@@ -1164,6 +1233,7 @@
   setTimeout(autoRenderContainersPanel, 120);
   setTimeout(autoRenderContainersPanel, 400);
   setInterval(autoRenderContainersPanel, 4000);
+  setInterval(enhanceSeaImportJobModal, 900);
   if (localStorage.getItem("china_manifest_refresh") === "1") {
     localStorage.removeItem("china_manifest_refresh");
     // setTimeout(renderContainerManifestBoard, 1800);
