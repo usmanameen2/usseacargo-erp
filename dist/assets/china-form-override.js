@@ -643,7 +643,7 @@
     const candidates = Array.from(document.querySelectorAll("div,span,strong"))
       .filter((el) => {
         const t = (el.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
-        return t.includes("total:") && t.includes("shipment");
+        return t.includes("total:") && t.includes("shipment") && t.includes("cost:") && t.includes("revenue:") && t.includes("profit:");
       })
       .map((el) => {
         let node = el;
@@ -946,12 +946,20 @@
   setInterval(injectRowActions, 1200);
   // Disabled duplicate legacy board; using only the clean tracker table.
   // setTimeout(renderContainerManifestBoard, 1200);
-  setTimeout(autoRenderContainersPanel, 900);
-  setInterval(autoRenderContainersPanel, 2500);
+  // Render immediately on load/hash changes, then light keep-alive refresh.
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => autoRenderContainersPanel(), { once: true });
+  } else {
+    autoRenderContainersPanel();
+  }
+  window.addEventListener("hashchange", () => autoRenderContainersPanel());
+  setTimeout(autoRenderContainersPanel, 120);
+  setTimeout(autoRenderContainersPanel, 400);
+  setInterval(autoRenderContainersPanel, 4000);
   if (localStorage.getItem("china_manifest_refresh") === "1") {
     localStorage.removeItem("china_manifest_refresh");
     // setTimeout(renderContainerManifestBoard, 1800);
-    setTimeout(autoRenderContainersPanel, 2000);
+    setTimeout(autoRenderContainersPanel, 150);
   }
 
   injectStyles();
