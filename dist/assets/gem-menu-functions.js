@@ -1,4 +1,6 @@
 ﻿(() => {
+  // Run only in old ERP index page, never in gem-shell prototype page.
+  if (/gem-shell\.html$/i.test(window.location.pathname || '')) return;
   const BTN_ID = 'gemFnOpenBtn';
   const PANEL_ID = 'gemFnPanel';
   const STYLE_ID = 'gemFnStyle';
@@ -47,6 +49,10 @@
     s.id = STYLE_ID;
     s.textContent = `
       #${BTN_ID}{position:fixed;right:16px;bottom:16px;z-index:100001;background:#0f4c81;color:#fff;border:none;border-radius:999px;padding:10px 14px;font:700 12px Tahoma;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+      #${BTN_ID}.sidebar-mode{position:static;right:auto;bottom:auto;z-index:auto;display:flex;align-items:center;gap:10px;width:100%;height:42px;border-radius:12px;padding:0 14px;background:#0f1f3d;color:#dbe8ff;box-shadow:none;border:1px solid rgba(125,161,235,.24);font:600 16px/1 Tahoma}
+      #${BTN_ID}.sidebar-mode .gf-ico{font-size:18px;line-height:1}
+      #${BTN_ID}.sidebar-mode .gf-txt{font:600 27px Tahoma}
+      #${BTN_ID}.sidebar-mode:hover{background:#13264b}
       #${PANEL_ID}{position:fixed;right:16px;bottom:60px;width:min(980px,95vw);height:min(78vh,760px);background:#f3f5f8;border:1px solid #cfd3da;border-radius:8px;z-index:100002;display:none;grid-template-rows:36px 1fr;font:11px Tahoma;color:#2a2f36}
       #${PANEL_ID}.open{display:grid}
       .gf-head{display:flex;align-items:center;justify-content:space-between;padding:0 10px;background:#2f3238;color:#fff}
@@ -74,10 +80,11 @@
     if (!document.getElementById(BTN_ID)) {
       const b = document.createElement('button');
       b.id = BTN_ID;
-      b.textContent = 'GEM Menu';
+      b.innerHTML = '<span class="gf-ico">⚙️</span><span class="gf-txt">GEM Menu</span>';
       b.onclick = () => document.getElementById(PANEL_ID)?.classList.toggle('open');
       document.body.appendChild(b);
     }
+    placeButtonInSidebar();
 
     let panel = document.getElementById(PANEL_ID);
     if (!panel) {
@@ -191,6 +198,39 @@
     };
   }
 
+  function placeButtonInSidebar() {
+    const btn = document.getElementById(BTN_ID);
+    if (!btn) return;
+
+    // Find the China -> Dubai sidebar row first.
+    const chinaNode = Array.from(document.querySelectorAll('button, a, div, span'))
+      .find(el => /china\s*[\u2192>\-]\s*dubai/i.test((el.textContent || '').trim()));
+    const container = chinaNode ? (chinaNode.closest('li, [role="menuitem"], button, a, div') || chinaNode) : null;
+    const sidebar = chinaNode?.closest('nav, aside, [class*="sidebar"], [class*="side"]');
+
+    if (container && container.parentElement) {
+      // Add as sibling directly after China -> Dubai item.
+      btn.classList.add('sidebar-mode');
+      if (btn.parentElement !== container.parentElement) {
+        container.parentElement.insertBefore(btn, container.nextSibling);
+      } else if (btn.previousSibling !== container) {
+        container.parentElement.insertBefore(btn, container.nextSibling);
+      }
+      return;
+    }
+
+    // Fallback: append near bottom of sidebar if China item is not found yet.
+    if (sidebar && btn.parentElement !== sidebar) {
+      btn.classList.add('sidebar-mode');
+      sidebar.appendChild(btn);
+      return;
+    }
+
+    // Final fallback: keep floating mode.
+    btn.classList.remove('sidebar-mode');
+    if (btn.parentElement !== document.body) document.body.appendChild(btn);
+  }
+
   async function load() {
     state.loading = true;
     try {
@@ -213,4 +253,11 @@
   } else {
     render();
   }
+
+  // React UI can re-render sidebar; keep GEM button pinned after China menu.
+  const obs = new MutationObserver(() => {
+    placeButtonInSidebar();
+  });
+  obs.observe(document.documentElement, { childList: true, subtree: true });
 })();
+
