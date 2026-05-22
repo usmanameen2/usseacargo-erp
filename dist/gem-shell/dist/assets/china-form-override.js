@@ -1,0 +1,1245 @@
+(() => {
+  const STYLE_ID = "china-form-override-style";
+  const MODAL_ID = "chinaFormModal";
+  const OVERLAY_ID = "chinaFormOverlay";
+  const TABLE_BODY_ID = "containerRows";
+  const COUNT_ID = "containerCount";
+  const DETAIL_MODAL_ID = "chinaShipmentDetailModal";
+  const ACTION_MODAL_ID = "chinaContainerActionModal";
+  const CONTAINER_BOARD_ID = "chinaContainerManifestBoard";
+  const CONTAINERS_SUBMENU_PANEL_ID = "chinaContainersSubmenuPanel";
+  const CHINA_CONTAINERS_INLINE_ID = "chinaContainersInlineSection";
+  const CHINA_CONTAINER_MENU_ID = "chinaContainerRowMenu";
+  const CONTAINERS_PAGE_SIZE = 20;
+  let containersCurrentPage = 1;
+  let containersAllRows = [];
+
+  function injectStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent = `
+      .cfo-overlay {
+        position: fixed; inset: 0; background: rgba(31,41,55,.45);
+        backdrop-filter: blur(2px); z-index: 9999; display: none;
+      }
+      .cfo-modal {
+        position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        width: min(1240px, 96vw); max-height: 94vh; overflow: auto;
+        background: #fff; border: 1px solid #d7dde8; border-radius: 18px;
+        box-shadow: 0 28px 80px rgba(15,23,42,.25); z-index: 10000; display: none;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      }
+      .cfo-head { display:flex; align-items:center; justify-content:space-between; padding: 18px 22px; border-bottom:1px solid #e6ebf2; }
+      .cfo-title { display:flex; align-items:center; gap:12px; font-size: 34px; font-weight: 700; color:#0f172a; }
+      .cfo-icon { width:44px; height:44px; border-radius: 12px; background:#e8f0ff; display:grid; place-items:center; color:#2563eb; font-size:20px; }
+      .cfo-close { border:none; background:transparent; font-size:32px; line-height:1; cursor:pointer; color:#64748b; }
+      .cfo-form { padding: 20px 22px 24px; }
+      .cfo-grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:14px 16px; }
+      .cfo-full { grid-column: 1 / -1; }
+      .cfo-label { display:block; font-size:12px; font-weight:700; color:#334155; margin: 0 0 6px; }
+      .cfo-req::after { content:" *"; color:#dc2626; }
+      .cfo-input,.cfo-select,.cfo-textarea {
+        width:100%; height:38px; border:1px solid #d3dce8; border-radius:10px;
+        background:#f8fafc; padding: 0 10px; font-size:13px; color:#0f172a; box-sizing:border-box;
+      }
+      .cfo-textarea { min-height: 82px; height:auto; padding:10px; resize:vertical; }
+      .cfo-section {
+        margin-top: 14px; border:1px solid #dbe3ef; border-radius:14px; overflow:hidden; background:#f8fafc;
+      }
+      .cfo-section-head {
+        display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; background:#eef3fa; border-bottom:1px solid #dbe3ef;
+      }
+      .cfo-section-title { font-size:13px; font-weight:700; color:#1e293b; }
+      .cfo-btn {
+        height:34px; border-radius:10px; border:1px solid #c8d3e3; background:#fff;
+        color:#334155; font-size:12px; font-weight:700; padding:0 12px; cursor:pointer;
+      }
+      .cfo-btn-primary { background:#2563eb; border-color:#2563eb; color:#fff; }
+      .cfo-table-wrap { overflow:auto; background:#fff; }
+      .cfo-table { width:100%; border-collapse:collapse; min-width: 1760px; font-size:12px; }
+      .cfo-table th, .cfo-table td { border:1px solid #dbe3ef; padding:6px; text-align:left; vertical-align:middle; }
+      .cfo-table th { background:#f3f6fb; color:#334155; font-weight:700; white-space:nowrap; }
+      .cfo-cell-input,.cfo-cell-select {
+        width:100%; height:30px; border:1px solid #cfd8e6; border-radius:8px; background:#fff; padding:0 8px; font-size:12px; box-sizing:border-box;
+      }
+      .cfo-cell-actions { display:flex; gap:6px; }
+      .cfo-mini { width:30px; height:30px; border-radius:8px; border:1px solid #c7d2e3; background:#fff; cursor:pointer; font-weight:700; }
+      .cfo-footer {
+        position: sticky; bottom: 0; background:#fff; border-top:1px solid #e6ebf2; padding:14px 22px;
+        display:flex; justify-content:flex-end; gap:10px;
+      }
+      .cfo-submit { height:40px; padding:0 16px; border:none; border-radius:12px; background:#2563eb; color:#fff; font-size:14px; font-weight:700; cursor:pointer; }
+      .cfo-cancel { height:40px; padding:0 16px; border:1px solid #c8d3e3; border-radius:12px; background:#fff; color:#334155; font-size:14px; font-weight:700; cursor:pointer; }
+      details.cfo-details { margin-top: 12px; border:1px solid #dbe3ef; border-radius:12px; background:#fff; }
+      details.cfo-details > summary { list-style:none; cursor:pointer; padding:10px 12px; font-weight:700; color:#334155; }
+      details.cfo-details > summary::-webkit-details-marker { display:none; }
+      .cfo-details-body { padding: 6px 12px 12px; }
+      @media (max-width: 900px) {
+        .cfo-grid { grid-template-columns: 1fr; }
+        .cfo-modal { width: 98vw; border-radius: 12px; }
+        .cfo-title { font-size: 26px; }
+      }
+      .china-manifest-board { display:none !important; }
+      .china-manifest-head { display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #e6ebf2;font-weight:700;color:#0f172a; }
+      .china-manifest-wrap { overflow:auto; }
+      .china-manifest-table { width:100%;border-collapse:collapse;min-width:900px;font-size:12px; }
+      .china-manifest-table th,.china-manifest-table td { border:1px solid #e2e8f0;padding:8px;text-align:left; }
+      .china-manifest-table th { background:#f8fafc;color:#334155; }
+      .china-containers-submenu {
+        margin-top: 12px; border:1px solid #dbe3ef; border-radius:12px; background:#fff; overflow:hidden;
+      }
+      .china-containers-submenu-head {
+        display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #e6ebf2; font-weight:700; color:#0f172a;
+      }
+      .china-containers-submenu-wrap { overflow:auto; }
+      .china-containers-submenu-table { width:100%; min-width:980px; border-collapse:collapse; font-size:12px; }
+      .china-containers-submenu-table th,.china-containers-submenu-table td { border:1px solid #e2e8f0; padding:8px; text-align:left; }
+      .china-containers-submenu-table th { background:#f8fafc; color:#334155; }
+      .china-inline-containers {
+        margin-top: 14px; border:1px solid #dbe3ef; border-radius:12px; background:#fff; overflow:hidden;
+      }
+      .china-inline-containers-head {
+        display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid #e6ebf2; font-weight:700; color:#0f172a;
+      }
+      .china-inline-containers-pager {
+        display:flex; gap:8px; align-items:center; font-size:12px; color:#475569;
+      }
+      .china-inline-containers-wrap { overflow:auto; }
+      .china-inline-containers-table { width:100%; min-width:1100px; border-collapse:collapse; font-size:12px; }
+      .china-inline-containers-table th,.china-inline-containers-table td { border:1px solid #e2e8f0; padding:8px; text-align:left; }
+      .china-inline-containers-table th { background:#f8fafc; color:#334155; }
+      .china-inline-containers-table tbody tr { cursor:pointer; }
+      .china-inline-containers-table tbody tr:hover { background:#f8fbff; }
+      .china-row-menu {
+        position: fixed; z-index: 10050; min-width: 240px; background:#fff; border:1px solid #dbe3ef;
+        border-radius:10px; box-shadow:0 12px 30px rgba(15,23,42,.2); overflow:hidden; display:none;
+      }
+      .china-row-menu button {
+        width:100%; text-align:left; border:none; background:#fff; padding:9px 12px; font-size:13px; color:#0f172a; cursor:pointer;
+      }
+      .china-row-menu button:hover { background:#eff6ff; }
+      .sea-import-extra-wrap {
+        margin: 10px 0 14px; border:1px solid #dbe3ef; border-radius:12px; padding:12px; background:#fff;
+      }
+      .sea-import-extra-grid {
+        display:grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap:12px 14px;
+      }
+      .sea-import-extra-field label {
+        display:block; font-size:12px; font-weight:700; color:#334155; margin:0 0 6px;
+      }
+      .sea-import-extra-field input,
+      .sea-import-extra-field select,
+      .sea-import-extra-field textarea {
+        width:100%; height:38px; border:1px solid #d3dce8; border-radius:10px; background:#f8fafc; padding:0 10px; box-sizing:border-box;
+      }
+      .sea-import-extra-field textarea { min-height:84px; height:auto; padding:10px; resize:vertical; }
+      .sea-import-extra-full { grid-column:1 / -1; }
+      @media (max-width: 900px) {
+        .sea-import-extra-grid { grid-template-columns:1fr; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function baseField(label, name, opts = {}) {
+    const req = opts.required ? " cfo-req" : "";
+    const required = opts.required ? "required" : "";
+    const placeholder = opts.placeholder ? `placeholder="${opts.placeholder}"` : "";
+    const value = opts.value != null ? `value="${opts.value}"` : "";
+    return `
+      <div class="${opts.full ? "cfo-full" : ""}">
+        <label class="cfo-label${req}">${label}</label>
+        <input class="cfo-input" name="${name}" ${required} ${placeholder} ${value}/>
+      </div>
+    `;
+  }
+
+  function selectField(label, name, items, opts = {}) {
+    const req = opts.required ? " cfo-req" : "";
+    const required = opts.required ? "required" : "";
+    const options = items
+      .map((v) => `<option value="${v}" ${opts.value === v ? "selected" : ""}>${v}</option>`)
+      .join("");
+    return `
+      <div class="${opts.full ? "cfo-full" : ""}">
+        <label class="cfo-label${req}">${label}</label>
+        <select class="cfo-select" name="${name}" ${required}>${options}</select>
+      </div>
+    `;
+  }
+
+  function dateField(label, name, opts = {}) {
+    const req = opts.required ? " cfo-req" : "";
+    const required = opts.required ? "required" : "";
+    return `
+      <div class="${opts.full ? "cfo-full" : ""}">
+        <label class="cfo-label${req}">${label}</label>
+        <input class="cfo-input" type="date" name="${name}" ${required}/>
+      </div>
+    `;
+  }
+
+  function createModal() {
+    if (document.getElementById(MODAL_ID)) return;
+
+    const overlay = document.createElement("div");
+    overlay.id = OVERLAY_ID;
+    overlay.className = "cfo-overlay";
+
+    const modal = document.createElement("div");
+    modal.id = MODAL_ID;
+    modal.className = "cfo-modal";
+    modal.innerHTML = `
+      <div class="cfo-head">
+        <div class="cfo-title"><span class="cfo-icon">⚓</span>New Shipment</div>
+        <button class="cfo-close" type="button" aria-label="Close">×</button>
+      </div>
+      <form class="cfo-form" id="cfoForm">
+        <div class="cfo-grid">
+          ${selectField("Branch", "branch", ["UAE", "KSA", "OMAN", "QATAR"], { value: "UAE" })}
+          ${selectField("Job Type", "jobType", ["SELECT JOB TYPE", "FCL", "CONSOLE", "CO-LOAD", "CO-LOAD FCL", "BREAKBULK", "DIRECT-FCL", "DIRECT LCL"], { required: true, value: "SELECT JOB TYPE" })}
+          ${selectField("Shipment Type", "shipmentType", ["COC", "SOC", "FCL", "LCL"], { required: true, value: "COC" })}
+          ${baseField("Agent", "agent")}
+          ${baseField("Port of Loading", "portOfLoading", { required: true })}
+          ${dateField("ETD POL", "etdPol", { required: true })}
+          ${selectField("Port of Discharge", "portOfDischarge", ["JEBEL ALI", "ABU DHABI", "SHARJAH"], { value: "JEBEL ALI" })}
+          ${baseField("Vessel", "vessel", { required: true })}
+          ${baseField("Voyage", "voyage", { required: true })}
+          ${dateField("ETA Jebel Ali", "etaJebelAli", { required: true })}
+          ${dateField("Discharge Date", "dischargeDate")}
+          ${baseField("Main Line", "mainLine", { required: true })}
+          ${baseField("Master B/L No", "masterBLNo", { required: true })}
+          ${baseField("Empty Removed By", "emptyRemovedBy")}
+          ${selectField("Terminal", "terminal", ["Terminal 1", "Terminal 2", "Terminal 3"], { value: "Terminal 1" })}
+          ${selectField("Master B/L Freight Term", "masterBLFreightTerm", ["SELECT FREIGHT TERM", "PREPAID", "COLLECT"], { value: "SELECT FREIGHT TERM" })}
+          ${baseField("Carrier", "carrier")}
+          ${baseField("Carrier Ref", "carrierRef")}
+          ${baseField("Serial Number", "serialNumber")}
+          ${baseField("USD Buying Ex. Rate", "usdBuyingExRate", { value: "3.76" })}
+          ${baseField("USD Selling Ex. Rate", "usdSellingExRate", { value: "3.76" })}
+          ${baseField("Warehouse", "warehouse")}
+          <div class="cfo-full">
+            <label class="cfo-label">Warehouse Remarks</label>
+            <textarea class="cfo-textarea" name="warehouseRemarks"></textarea>
+          </div>
+          ${baseField("Hauler / Transporter", "haulerTransporter")}
+          ${baseField("Documentation By", "documentationBy")}
+          ${baseField("Pre-Alert Email", "preAlertEmail")}
+          ${selectField("Costing Type", "costingType", ["", "Estimated", "Actual", "Final"])}
+          <div class="cfo-full">
+            <label class="cfo-label">Internal Remarks</label>
+            <textarea class="cfo-textarea" name="internalRemarks"></textarea>
+          </div>
+          ${baseField("Rotation Number", "rotationNumber")}
+          ${baseField("MRN Number", "mrnNumber")}
+          ${baseField("Cargo Transfer Number", "cargoTransferNumber")}
+        </div>
+
+        <div class="cfo-section">
+          <div class="cfo-section-head">
+            <div class="cfo-section-title">Number of Containers: <span id="${COUNT_ID}">1</span></div>
+          </div>
+          <div class="cfo-table-wrap">
+            <table class="cfo-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Select</th>
+                  <th>CNTR No</th>
+                  <th>Seal No</th>
+                  <th>Size</th>
+                  <th>Type</th>
+                  <th>Ship Type</th>
+                  <th>EDI Code</th>
+                  <th>CTG</th>
+                  <th>Status</th>
+                  <th>PKGS</th>
+                  <th>G.WT</th>
+                  <th>CBM</th>
+                  <th>Principal</th>
+                  <th>Slot</th>
+                  <th>Yard</th>
+                  <th>POD</th>
+                  <th>Destination</th>
+                  <th>Add</th>
+                  <th>Delete</th>
+                </tr>
+              </thead>
+              <tbody id="${TABLE_BODY_ID}"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <button type="submit" style="display:none;"></button>
+      </form>
+      <div class="cfo-footer">
+        <button type="button" class="cfo-cancel" data-close>Cancel</button>
+        <button type="button" class="cfo-submit" id="cfoSubmit">Submit</button>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    document.body.appendChild(modal);
+
+    overlay.addEventListener("click", hideModal);
+    modal.querySelector(".cfo-close").addEventListener("click", hideModal);
+    modal.querySelector("[data-close]").addEventListener("click", hideModal);
+    modal.querySelector("#cfoSubmit").addEventListener("click", () => {
+      modal.querySelector("#cfoForm").requestSubmit();
+    });
+    modal.querySelector("#cfoForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const submitBtn = modal.querySelector("#cfoSubmit");
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Saving...";
+      }
+      try {
+        const token = localStorage.getItem("erp_token");
+        if (!token) throw new Error("Login required. Please login again.");
+
+        const formEl = modal.querySelector("#cfoForm");
+        const payload = Object.fromEntries(new FormData(formEl).entries());
+        payload.cost = Number(payload.cost || 0);
+        payload.revenue = Number(payload.revenue || 0);
+        payload.usdBuyingExRate = Number(payload.usdBuyingExRate || 0);
+        payload.usdSellingExRate = Number(payload.usdSellingExRate || 0);
+        payload.profit = Number((payload.revenue || 0) - (payload.cost || 0));
+        payload.margin = payload.revenue > 0 ? Number(((payload.profit / payload.revenue) * 100).toFixed(2)) : 0;
+        if (!payload.shipmentNo) payload.shipmentNo = payload.reference || `SH-${Date.now()}`;
+        if (!payload.status) payload.status = "draft";
+        // Compatibility fields used by China->Dubai list table on this screen
+        payload.reference = payload.reference || payload.masterBLNo || payload.shipmentNo;
+        payload.client = payload.client || payload.agent || "Client";
+        payload.cargo = payload.cargo || payload.shipmentType || "General";
+        payload.origin = payload.origin || payload.portOfLoading || "";
+        payload.destination = payload.destination || payload.portOfDischarge || "";
+        payload.etd = payload.etd || payload.etdPol || "";
+        payload.eta = payload.eta || payload.etaJebelAli || "";
+
+        const containerRows = Array.from(document.querySelectorAll(`#${TABLE_BODY_ID} tr`)).map((tr) => {
+          const inputs = tr.querySelectorAll("input,select");
+          return {
+            containerNo: inputs[1]?.value?.trim() || "",
+            sealNo: inputs[2]?.value?.trim() || "",
+            size: inputs[3]?.value || "",
+            type: inputs[4]?.value || "",
+            shipType: inputs[5]?.value || "",
+            ediCode: inputs[6]?.value || "",
+            ctg: inputs[7]?.value || "",
+            rowStatus: inputs[8]?.value || "",
+            pkgs: Number(inputs[9]?.value || 0),
+            gwt: Number(inputs[10]?.value || 0),
+            cbm: Number(inputs[11]?.value || 0),
+            principal: inputs[12]?.value || "",
+            slot: inputs[13]?.value || "",
+            yard: inputs[14]?.value || "",
+            pod: inputs[15]?.value || "",
+            destination: inputs[16]?.value || "",
+          };
+        });
+        // Save all visible rows (even when some fields are blank) because user may add rows first,
+        // then complete HBL/manifest details later per container.
+        const filledContainers = containerRows.length ? containerRows : [{}];
+        payload.numberOfContainers = containerRows.length || 1;
+        if (!payload.cargo || payload.cargo === "General") payload.cargo = `${payload.numberOfContainers} Container(s)`;
+
+        const shipmentRes = await fetch("/api/china-dubai/shipments", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+        const shipmentJson = await shipmentRes.json().catch(() => ({}));
+        if (!shipmentRes.ok || !shipmentJson.success) {
+          throw new Error(shipmentJson.message || `Shipment save failed (${shipmentRes.status})`);
+        }
+
+        const shipmentId = shipmentJson?.data?.id;
+        if (shipmentId) {
+          for (let i = 0; i < filledContainers.length; i++) {
+            const row = filledContainers[i] || {};
+            const containerPayload = {
+              shipmentId,
+              containerNo: row.containerNo || `ROW-${i + 1}`,
+              sealNo: row.sealNo || "",
+              size: row.size || "20",
+              type: row.type || "GP",
+              weight: Number(row.gwt || 0),
+              status: row.rowStatus || "active",
+            };
+            await fetch("/api/china-dubai/containers", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify(containerPayload),
+            });
+          }
+        }
+
+        alert("Shipment saved successfully.");
+        localStorage.setItem("china_manifest_refresh", "1");
+        showShipmentDetails(shipmentJson.data);
+        hideModal();
+        // Stay on China page; refresh panels in-place
+        setTimeout(() => {
+          renderContainerManifestBoard().catch(() => {});
+          renderInlineContainersTable().catch(() => {});
+        }, 250);
+      } catch (err) {
+        alert(err?.message || "Failed to save shipment.");
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Submit";
+        }
+      }
+    });
+
+    addRow();
+  }
+
+  function rowTemplate(idx) {
+    return `
+      <tr data-row="${idx}">
+        <td class="row-no">${idx}</td>
+        <td><input type="checkbox" checked></td>
+        <td><input class="cfo-cell-input" type="text"></td>
+        <td><input class="cfo-cell-input" type="text"></td>
+        <td>
+          <select class="cfo-cell-select">
+            <option>20</option><option>40</option><option>45</option>
+          </select>
+        </td>
+        <td>
+          <select class="cfo-cell-select">
+            <option>GP</option><option>HC</option><option>OT</option>
+          </select>
+        </td>
+        <td>
+          <select class="cfo-cell-select">
+            <option>FCL/FCL</option><option>LCL/LCL</option><option>FCL/LCL</option>
+          </select>
+        </td>
+        <td>
+          <select class="cfo-cell-select">
+            <option>20GP</option><option>40HC</option><option>45HC</option>
+          </select>
+        </td>
+        <td>
+          <select class="cfo-cell-select">
+            <option>L</option><option>M</option><option>H</option>
+          </select>
+        </td>
+        <td>
+          <select class="cfo-cell-select">
+            <option>LDN</option><option>PENDING</option><option>HOLD</option>
+          </select>
+        </td>
+        <td><input class="cfo-cell-input" type="number" value="0"></td>
+        <td><input class="cfo-cell-input" type="number" value="0"></td>
+        <td><input class="cfo-cell-input" type="number" value="0"></td>
+        <td>
+          <select class="cfo-cell-select"><option></option><option>Y</option><option>N</option></select>
+        </td>
+        <td>
+          <select class="cfo-cell-select"><option></option><option>A</option><option>B</option></select>
+        </td>
+        <td>
+          <select class="cfo-cell-select"><option></option><option>Y1</option><option>Y2</option></select>
+        </td>
+        <td><input class="cfo-cell-input" type="text"></td>
+        <td><input class="cfo-cell-input" type="text"></td>
+        <td><button class="cfo-mini add-row" type="button">+</button></td>
+        <td><button class="cfo-mini del-row" type="button">×</button></td>
+      </tr>
+    `;
+  }
+
+  function updateRowMeta() {
+    const tbody = document.getElementById(TABLE_BODY_ID);
+    if (!tbody) return;
+    const rows = Array.from(tbody.querySelectorAll("tr"));
+    rows.forEach((tr, i) => {
+      tr.dataset.row = String(i + 1);
+      const no = tr.querySelector(".row-no");
+      if (no) no.textContent = String(i + 1);
+    });
+    const count = document.getElementById(COUNT_ID);
+    if (count) count.textContent = String(rows.length);
+  }
+
+  function addRow(afterRow) {
+    const tbody = document.getElementById(TABLE_BODY_ID);
+    if (!tbody) return;
+    const idx = tbody.querySelectorAll("tr").length + 1;
+    const temp = document.createElement("tbody");
+    temp.innerHTML = rowTemplate(idx);
+    const row = temp.firstElementChild;
+    if (afterRow && afterRow.parentNode === tbody) {
+      tbody.insertBefore(row, afterRow.nextSibling);
+    } else {
+      tbody.appendChild(row);
+    }
+    updateRowMeta();
+  }
+
+  function removeRow(row) {
+    const tbody = document.getElementById(TABLE_BODY_ID);
+    if (!tbody || !row) return;
+    const rows = tbody.querySelectorAll("tr");
+    if (rows.length <= 1) return;
+    row.remove();
+    updateRowMeta();
+  }
+
+  function showModal() {
+    createModal();
+    document.getElementById(OVERLAY_ID).style.display = "block";
+    document.getElementById(MODAL_ID).style.display = "block";
+    document.body.style.overflow = "hidden";
+  }
+
+  function hideModal() {
+    const overlay = document.getElementById(OVERLAY_ID);
+    const modal = document.getElementById(MODAL_ID);
+    if (overlay) overlay.style.display = "none";
+    if (modal) modal.style.display = "none";
+    document.body.style.overflow = "";
+  }
+
+  function bindGlobalEvents() {
+    document.addEventListener(
+      "click",
+      (e) => {
+        const addBtn = e.target.closest(".add-row");
+        if (addBtn) {
+          e.preventDefault();
+          const row = addBtn.closest("tr");
+          addRow(row);
+          return;
+        }
+        const delBtn = e.target.closest(".del-row");
+        if (delBtn) {
+          e.preventDefault();
+          removeRow(delBtn.closest("tr"));
+          return;
+        }
+
+        const newShipmentBtn = e.target.closest("button");
+        if (
+          newShipmentBtn &&
+          newShipmentBtn.textContent &&
+          newShipmentBtn.textContent.trim().toLowerCase().includes("new shipment")
+        ) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          showModal();
+        }
+
+        const menuText = (e.target.textContent || "").trim().toLowerCase();
+        if (menuText === "containers") return;
+        if (menuText === "shipments") {
+          const p = document.getElementById(CONTAINERS_SUBMENU_PANEL_ID);
+          if (p) p.remove();
+        }
+      },
+      true
+    );
+  }
+
+  function ensureDetailsModal() {
+    if (document.getElementById(DETAIL_MODAL_ID)) return;
+    const wrap = document.createElement("div");
+    wrap.id = DETAIL_MODAL_ID;
+    wrap.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:10020;display:none;";
+    wrap.innerHTML = `
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(920px,95vw);max-height:90vh;overflow:auto;background:#fff;border:1px solid #dbe3ef;border-radius:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #e6ebf2;">
+          <div style="font-size:18px;font-weight:700;color:#0f172a;">Shipment Details</div>
+          <button id="chinaDetailClose" type="button" style="border:none;background:transparent;font-size:28px;cursor:pointer;color:#64748b;">×</button>
+        </div>
+        <div id="chinaDetailBody" style="padding:14px;"></div>
+      </div>
+    `;
+    document.body.appendChild(wrap);
+    wrap.addEventListener("click", (e) => {
+      if (e.target === wrap) wrap.style.display = "none";
+    });
+    wrap.querySelector("#chinaDetailClose").addEventListener("click", () => {
+      wrap.style.display = "none";
+    });
+  }
+
+  function ensureActionModal() {
+    let wrap = document.getElementById(ACTION_MODAL_ID);
+    if (wrap) return wrap;
+    wrap = document.createElement("div");
+    wrap.id = ACTION_MODAL_ID;
+    wrap.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:10030;display:none;";
+    wrap.innerHTML = `
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(760px,94vw);max-height:88vh;overflow:auto;background:#fff;border:1px solid #dbe3ef;border-radius:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #e6ebf2;">
+          <div id="containerActionTitle" style="font-size:18px;font-weight:700;color:#0f172a;">Container Action</div>
+          <button id="containerActionClose" type="button" style="border:none;background:transparent;font-size:28px;cursor:pointer;color:#64748b;">×</button>
+        </div>
+        <div style="padding:12px 14px;">
+          <div id="containerActionMeta" style="font-size:12px;color:#475569;margin-bottom:8px;"></div>
+          <textarea id="containerActionText" class="cfo-textarea" style="min-height:120px;" placeholder="Enter details..."></textarea>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;">
+            <button type="button" id="containerActionSave" class="cfo-btn cfo-btn-primary">Save</button>
+          </div>
+          <div id="containerActionHistory" style="margin-top:12px;"></div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(wrap);
+    wrap.addEventListener("click", (e) => { if (e.target === wrap) wrap.style.display = "none"; });
+    wrap.querySelector("#containerActionClose").addEventListener("click", () => { wrap.style.display = "none"; });
+    return wrap;
+  }
+
+  function actionKey(container, action) {
+    return `china_action_${action}_${container?.shipment_id || "x"}_${container?.container_no || "x"}`;
+  }
+
+  function openContainerActionModal(actionLabel, container, onSaveExtra) {
+    const modal = ensureActionModal();
+    const title = modal.querySelector("#containerActionTitle");
+    const meta = modal.querySelector("#containerActionMeta");
+    const text = modal.querySelector("#containerActionText");
+    const save = modal.querySelector("#containerActionSave");
+    const history = modal.querySelector("#containerActionHistory");
+    const key = actionKey(container, actionLabel);
+
+    title.textContent = actionLabel;
+    meta.textContent = `Container: ${container?.container_no || "-"} | Shipment: ${container?.shipment_id || "-"}`;
+    text.value = "";
+
+    const items = JSON.parse(localStorage.getItem(key) || "[]");
+    history.innerHTML = items.length
+      ? items.map((x) => `<div style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;margin-bottom:6px;"><div style="font-size:11px;color:#64748b;">${x.at}</div><div style="font-size:13px;color:#0f172a;">${x.note}</div></div>`).join("")
+      : `<div style="font-size:12px;color:#64748b;">No records yet.</div>`;
+
+    const saveHandler = async () => {
+      const note = (text.value || "").trim();
+      if (!note) { alert("Please enter details."); return; }
+      const arr = JSON.parse(localStorage.getItem(key) || "[]");
+      arr.unshift({ at: new Date().toLocaleString("en-GB"), note });
+      localStorage.setItem(key, JSON.stringify(arr.slice(0, 30)));
+      if (typeof onSaveExtra === "function") await onSaveExtra(note);
+      modal.style.display = "none";
+      alert(`${actionLabel} saved.`);
+    };
+    save.onclick = saveHandler;
+    modal.style.display = "block";
+  }
+
+  function showShipmentDetails(record) {
+    ensureDetailsModal();
+    const modal = document.getElementById(DETAIL_MODAL_ID);
+    const body = document.getElementById("chinaDetailBody");
+    if (!modal || !body) return;
+    const pretty = Object.entries(record || {}).map(([k, v]) => `
+      <div style="display:grid;grid-template-columns:220px 1fr;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9;">
+        <div style="font-weight:700;color:#334155;">${k}</div>
+        <div style="color:#0f172a;word-break:break-word;">${v == null ? "" : String(v)}</div>
+      </div>
+    `).join("");
+    body.innerHTML = pretty || "<div>No record details found.</div>";
+    modal.style.display = "block";
+  }
+
+  async function loadShipmentByReference(referenceText) {
+    const token = localStorage.getItem("erp_token");
+    if (!token) throw new Error("Login required.");
+    const res = await fetch("/api/china-dubai/shipments", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.success) throw new Error(json.message || "Failed to load shipments.");
+    const rows = Array.isArray(json.data) ? json.data : [];
+    if (!referenceText) return rows[0] || null;
+    const ref = referenceText.trim().toLowerCase();
+    return rows.find((r) => String(r.reference || "").trim().toLowerCase() === ref)
+      || rows.find((r) => String(r.master_bl_no || "").trim().toLowerCase() === ref)
+      || rows[0]
+      || null;
+  }
+
+  function injectRowActions() {
+    const table = document.querySelector("table");
+    if (!table) return;
+    const headRow = table.querySelector("thead tr");
+    const bodyRows = Array.from(table.querySelectorAll("tbody tr"));
+    if (!headRow || !bodyRows.length) return;
+
+    const ths = Array.from(headRow.querySelectorAll("th"));
+    const hasRef = ths.some((th) => /reference/i.test(th.textContent || ""));
+    const hasActions = ths.some((th) => /actions/i.test(th.textContent || ""));
+    if (!hasRef) return;
+
+    if (!hasActions) {
+      const th = document.createElement("th");
+      th.textContent = "ACTIONS";
+      headRow.appendChild(th);
+    }
+
+    bodyRows.forEach((tr) => {
+      if (tr.querySelector(".china-row-actions")) return;
+      const td = document.createElement("td");
+      td.className = "china-row-actions";
+      td.style.whiteSpace = "nowrap";
+      td.innerHTML = `
+        <button type="button" class="cfo-btn" data-view-row>View</button>
+        <button type="button" class="cfo-btn cfo-btn-primary" data-details-row style="margin-left:6px;">Details</button>
+      `;
+      tr.appendChild(td);
+    });
+  }
+
+  function getMainBoardRoot() {
+    const marker = Array.from(document.querySelectorAll("h1,h2,h3,div,span")).find((el) =>
+      /china\s*&?\s*dubai\s*shipments/i.test((el.textContent || "").trim())
+    );
+    if (marker) {
+      return marker.closest("section,main,article,div")?.parentElement || marker.closest("section,main,article,div");
+    }
+    // Fallback: anchor to app root/main area on china-dubai page.
+    if (location.hash && location.hash.includes("china-dubai")) {
+      const root = document.querySelector("#root");
+      if (root) return root;
+    }
+    return null;
+  }
+
+  function getVisibleContainerAnchor() { return null; }
+
+  function getSummaryBarElement() {
+    const totalLabel = Array.from(document.querySelectorAll("div,span,strong"))
+      .find((el) => /total\s*:/i.test((el.textContent || "").trim()));
+    if (!totalLabel) return null;
+    let node = totalLabel;
+    for (let i = 0; i < 10 && node; i++) {
+      const rect = node.getBoundingClientRect ? node.getBoundingClientRect() : { width: 0, height: 0 };
+      if (rect.width > 650 && rect.height >= 24 && rect.height <= 100) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function getInlineContainersAnchor() {
+    const candidates = Array.from(document.querySelectorAll("div,span,strong"))
+      .filter((el) => {
+        const t = (el.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
+        return t.includes("total:") && t.includes("shipment") && t.includes("cost:") && t.includes("revenue:") && t.includes("profit:");
+      })
+      .map((el) => {
+        let node = el;
+        for (let i = 0; i < 8 && node; i++) {
+          const rect = node.getBoundingClientRect ? node.getBoundingClientRect() : { width: 0, height: 0, top: 9999 };
+          if (rect.width > 700 && rect.height >= 28 && rect.height <= 90 && rect.top > 80 && rect.top < 900) {
+            return { summary: node, top: rect.top };
+          }
+          node = node.parentElement;
+        }
+        return null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.top - b.top);
+    // Strict mode: only bind to top summary bar. If not found, do not render.
+    return candidates[0] || null;
+  }
+
+  async function fetchWithAuth(url, options = {}) {
+    const token = localStorage.getItem("erp_token");
+    if (!token) throw new Error("Login required.");
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(options.headers || {}),
+      },
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.success) throw new Error(json.message || `Request failed (${res.status})`);
+    return json;
+  }
+
+  async function renderContainerManifestBoard() {
+    const root = getMainBoardRoot();
+    if (!root) return;
+    let board = document.getElementById(CONTAINER_BOARD_ID);
+    if (!board) {
+      board = document.createElement("div");
+      board.id = CONTAINER_BOARD_ID;
+      board.className = "china-manifest-board";
+      board.innerHTML = `
+        <div class="china-manifest-head">
+          <span>Containers - Manifest HBL</span>
+          <button type="button" class="cfo-btn" id="refreshManifestBoard">Refresh</button>
+        </div>
+        <div class="china-manifest-wrap">
+          <table class="china-manifest-table">
+            <thead>
+              <tr><th>#</th><th>Shipment</th><th>Container No</th><th>Seal No</th><th>Size</th><th>Type</th><th>HBL</th><th>Action</th></tr>
+            </thead>
+            <tbody id="manifestRows"><tr><td colspan="8">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      `;
+      root.appendChild(board);
+    }
+
+    const tbody = document.getElementById("manifestRows");
+    if (!tbody) return;
+    try {
+      const containers = (await fetchWithAuth("/api/china-dubai/containers")).data || [];
+      const hblRows = (await fetchWithAuth("/api/hbl-tracking")).data || [];
+      if (!containers.length) {
+        tbody.innerHTML = `<tr><td colspan="8">No containers found yet.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = containers.map((c, i) => {
+        const hbl = hblRows.find((h) => String(h.container_no || "").trim().toLowerCase() === String(c.container_no || "").trim().toLowerCase());
+        return `<tr>
+          <td>${i + 1}</td>
+          <td>${c.shipment_id || ""}</td>
+          <td>${c.container_no || ""}</td>
+          <td>${c.seal_no || ""}</td>
+          <td>${c.size || ""}</td>
+          <td>${c.type || ""}</td>
+          <td>${hbl ? (hbl.hbl_no || "Created") : "-"}</td>
+          <td><button type="button" class="cfo-btn cfo-btn-primary manifest-hbl-btn" data-container='${JSON.stringify(c).replace(/'/g, "&#39;")}'>Manifest HBL</button></td>
+        </tr>`;
+      }).join("");
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="8">${err.message || "Failed to load containers."}</td></tr>`;
+    }
+  }
+
+  async function createManifestForContainer(container) {
+    const hblNo = prompt(`Enter HBL No for container ${container.container_no || ""}`);
+    if (!hblNo) return;
+    await fetchWithAuth("/api/hbl-tracking", {
+      method: "POST",
+      body: JSON.stringify({
+        hblNo,
+        customerName: "China Dubai Client",
+        containerNo: container.container_no || "",
+        containerSize: container.size || "",
+        weight: Number(container.weight || 0),
+        status: "Active",
+        jobNo: container.shipment_id ? `SH-${container.shipment_id}` : "",
+        remarks: `Manifest created from China->Dubai`,
+      }),
+    });
+    alert("Manifest HBL created.");
+    await renderContainerManifestBoard();
+  }
+
+  async function renderContainersSubmenuPanel() {
+    // Container tracker table intentionally removed from China page.
+    const panel = document.getElementById(CONTAINERS_SUBMENU_PANEL_ID);
+    if (panel) panel.remove();
+  }
+
+  async function renderInlineContainersTable() {
+    if (!(location.hash || "").includes("china-dubai")) return;
+
+    const anchor = getInlineContainersAnchor();
+    if (!anchor?.summary || !anchor.summary.parentElement) {
+      const old = document.getElementById(CHINA_CONTAINERS_INLINE_ID);
+      if (old) old.remove();
+      return;
+    }
+
+    let section = document.getElementById(CHINA_CONTAINERS_INLINE_ID);
+    if (!section) {
+      section = document.createElement("div");
+      section.id = CHINA_CONTAINERS_INLINE_ID;
+      section.className = "china-inline-containers";
+      section.innerHTML = `
+        <div class="china-inline-containers-head">
+          <span>Containers (Auto from New Shipment)</span>
+          <div class="china-inline-containers-pager">
+            <button type="button" class="cfo-btn" id="prevInlineContainers">Prev</button>
+            <span id="inlineContainersPageInfo">Page 1</span>
+            <button type="button" class="cfo-btn" id="nextInlineContainers">Next</button>
+            <button type="button" class="cfo-btn" id="refreshInlineContainers">Refresh</button>
+          </div>
+        </div>
+        <div class="china-inline-containers-wrap">
+          <table class="china-inline-containers-table">
+            <thead>
+              <tr>
+                <th>Date</th><th>Job Type</th><th>Job No</th><th>MBL No</th><th>Vessel</th>
+                <th>Voyage</th><th>ETD Pol</th><th>ETA JEA</th><th>Port of Loading</th><th>Liner</th>
+                <th>Agent</th><th>Container No</th><th>Total BL</th><th>20 FT</th><th>40 FT</th>
+              </tr>
+            </thead>
+            <tbody id="chinaInlineContainersRows"><tr><td colspan="15">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    section.style.position = "static";
+    section.style.width = "100%";
+    section.style.marginTop = "14px";
+    section.style.marginBottom = "0";
+    section.style.zIndex = "auto";
+    if (section.parentNode !== anchor.summary.parentElement || section.previousSibling !== anchor.summary) {
+      anchor.summary.insertAdjacentElement("afterend", section);
+    }
+
+    const tbody = document.getElementById("chinaInlineContainersRows");
+    if (!tbody) return;
+
+    try {
+      const [cjson, sjson] = await Promise.all([
+        fetchWithAuth("/api/china-dubai/containers"),
+        fetchWithAuth("/api/china-dubai/shipments"),
+      ]);
+      let containers = Array.isArray(cjson.data) ? cjson.data : [];
+      const shipments = Array.isArray(sjson.data) ? sjson.data : [];
+      const byId = new Map(shipments.map((s) => [String(s.id), s]));
+
+      // Fallback: if container rows are missing in DB, build placeholders from shipment count.
+      if (!containers.length && shipments.length) {
+        const fallback = [];
+        shipments.forEach((s) => {
+          const n = Math.max(1, Number(s.number_of_containers || 0));
+          for (let i = 0; i < n; i++) {
+            fallback.push({
+              id: `${s.id}-${i + 1}`,
+              shipment_id: s.id,
+              container_no: "",
+              seal_no: "",
+              size: "",
+              type: "",
+              status: "pending",
+              weight: 0,
+              created_at: s.created_at,
+            });
+          }
+        });
+        containers = fallback;
+      }
+
+      if (!containers.length) {
+        tbody.innerHTML = `<tr><td colspan="15">No containers found.</td></tr>`;
+        const pageInfo = document.getElementById("inlineContainersPageInfo");
+        if (pageInfo) pageInfo.textContent = `Page 1 / 1 (20 rows)`;
+        return;
+      }
+
+      const fmtDate = (v) => {
+        if (!v) return "";
+        const d = new Date(v);
+        if (Number.isNaN(d.getTime())) return String(v);
+        return d.toLocaleString("en-GB");
+      };
+
+      containersAllRows = containers.slice().sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+      const totalPages = Math.max(1, Math.ceil(containersAllRows.length / CONTAINERS_PAGE_SIZE));
+      if (containersCurrentPage > totalPages) containersCurrentPage = totalPages;
+      if (containersCurrentPage < 1) containersCurrentPage = 1;
+      const start = (containersCurrentPage - 1) * CONTAINERS_PAGE_SIZE;
+      const pageRows = containersAllRows.slice(start, start + CONTAINERS_PAGE_SIZE);
+      const pageInfo = document.getElementById("inlineContainersPageInfo");
+      if (pageInfo) pageInfo.textContent = `Page ${containersCurrentPage} / ${totalPages} (20 rows)`;
+
+      tbody.innerHTML = pageRows.map((c, i) => {
+        const s = byId.get(String(c.shipment_id)) || {};
+        const sizeText = String(c.size || "");
+        const is20 = sizeText.startsWith("20");
+        const is40 = sizeText.startsWith("40");
+        return `<tr data-container='${JSON.stringify(c).replace(/'/g, "&#39;")}'>
+          <td>${fmtDate(s.created_at || c.created_at)}</td>
+          <td>${s.job_type || ""}</td>
+          <td>${s.shipment_no || s.reference || ""}</td>
+          <td>${s.master_bl_no || ""}</td>
+          <td>${s.vessel || ""}</td>
+          <td>${s.voyage || ""}</td>
+          <td>${fmtDate(s.etd_pol || s.etd)}</td>
+          <td>${fmtDate(s.eta_jebel_ali || s.eta)}</td>
+          <td>${s.port_of_loading || ""}</td>
+          <td>${s.main_line || ""}</td>
+          <td>${s.agent || ""}</td>
+          <td>${c.container_no || ""}</td>
+          <td>1</td>
+          <td>${is20 ? 1 : 0}</td>
+          <td>${is40 ? 1 : 0}</td>
+        </tr>`;
+      }).join("");
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="15">${err.message || "Failed to load containers."}</td></tr>`;
+    }
+  }
+
+  function ensureContainerRowMenu() {
+    let menu = document.getElementById(CHINA_CONTAINER_MENU_ID);
+    if (menu) return menu;
+    menu = document.createElement("div");
+    menu.id = CHINA_CONTAINER_MENU_ID;
+    menu.className = "china-row-menu";
+    menu.innerHTML = `
+      <button type="button" data-row-action="summary">Summary</button>
+      <button type="button" data-row-action="job">Job</button>
+      <button type="button" data-row-action="manifest-hbl">Manifest HBL</button>
+      <button type="button" data-row-action="arrival-notice">Arrival Notice</button>
+      <button type="button" data-row-action="container-invoice">Container Invoice</button>
+      <button type="button" data-row-action="job-costing">Job Costing</button>
+      <button type="button" data-row-action="port-documents">Port Documents</button>
+      <button type="button" data-row-action="ts-connection-list">T/S Connection List</button>
+      <button type="button" data-row-action="check-list">Check List</button>
+      <button type="button" data-row-action="file-cover">File Cover</button>
+      <button type="button" data-row-action="noa-delay-notice">NOA / Delay Notice</button>
+      <button type="button" data-row-action="documents-upload">Documents Upload</button>
+    `;
+    document.body.appendChild(menu);
+    return menu;
+  }
+
+  function hideContainerRowMenu() {
+    const menu = document.getElementById(CHINA_CONTAINER_MENU_ID);
+    if (menu) {
+      menu.style.display = "none";
+      menu.removeAttribute("data-container");
+    }
+  }
+
+  function openContainerRowMenu(evt, containerObj) {
+    const menu = ensureContainerRowMenu();
+    menu.style.display = "block";
+    menu.setAttribute("data-container", JSON.stringify(containerObj || {}));
+    const x = evt.clientX || 0;
+    const y = evt.clientY || 0;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const w = 260;
+    const h = 360;
+    menu.style.left = `${Math.min(vw - w - 12, x + 6)}px`;
+    menu.style.top = `${Math.min(vh - h - 12, y + 6)}px`;
+  }
+
+  document.addEventListener("click", async (e) => {
+    const row = e.target.closest("#chinaInlineContainersRows tr[data-container]");
+    if (row) {
+      e.preventDefault();
+      const data = row.getAttribute("data-container") || "{}";
+      let containerObj = {};
+      try { containerObj = JSON.parse(data); } catch {}
+      openContainerRowMenu(e, containerObj);
+      return;
+    }
+
+    const actionBtn = e.target.closest(`#${CHINA_CONTAINER_MENU_ID} [data-row-action]`);
+    if (actionBtn) {
+      const action = actionBtn.getAttribute("data-row-action");
+      const menu = document.getElementById(CHINA_CONTAINER_MENU_ID);
+      let containerObj = {};
+      try { containerObj = JSON.parse(menu?.getAttribute("data-container") || "{}"); } catch {}
+      hideContainerRowMenu();
+      if (action === "manifest-hbl") {
+        try {
+          await createManifestForContainer(containerObj);
+        } catch (err) {
+          alert(err?.message || "Failed to create Manifest HBL.");
+        }
+        return;
+      }
+      if (action === "summary") { showShipmentDetails({ container_no: containerObj.container_no || "", shipment_id: containerObj.shipment_id || "", action: "Summary" }); return; }
+      if (action === "job") { showShipmentDetails({ container_no: containerObj.container_no || "", shipment_id: containerObj.shipment_id || "", action: "Job" }); return; }
+      if (action === "container-invoice") {
+        openContainerActionModal("Container Invoice", containerObj, async (note) => {
+          const invoiceNo = `CINV-${Date.now()}`;
+          await fetchWithAuth("/api/invoices", {
+            method: "POST",
+            body: JSON.stringify({
+              invoiceNo,
+              customerName: "China Dubai Client",
+              amount: 0,
+              total: 0,
+              status: "draft",
+              notes: `Container ${containerObj.container_no || ""}: ${note}`,
+            }),
+          });
+        });
+        return;
+      }
+      if (action === "documents-upload" || action === "port-documents") {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.onchange = async () => {
+          const f = input.files && input.files[0];
+          if (!f) return;
+          try {
+            await fetchWithAuth("/api/shipping-docs", {
+              method: "POST",
+              body: JSON.stringify({
+                jobId: containerObj.shipment_id || null,
+                docType: action === "documents-upload" ? "container-upload" : "port-document",
+                fileName: f.name,
+                filePath: `upload/${f.name}`,
+                uploadedBy: "System Admin",
+                status: "active",
+              }),
+            });
+            alert(`${actionBtn.textContent.trim()} uploaded.`);
+          } catch (err) {
+            alert(err?.message || "Upload failed.");
+          }
+        };
+        input.click();
+        return;
+      }
+      openContainerActionModal(actionBtn.textContent.trim(), containerObj);
+      return;
+    }
+
+    if (!e.target.closest(`#${CHINA_CONTAINER_MENU_ID}`)) hideContainerRowMenu();
+
+    const viewBtn = e.target.closest("[data-view-row]");
+    const detailsBtn = e.target.closest("[data-details-row]");
+    if (viewBtn || detailsBtn) {
+      try {
+        const tr = (viewBtn || detailsBtn).closest("tr");
+        const referenceCell = tr ? tr.querySelector("td") : null;
+        const record = await loadShipmentByReference(referenceCell ? referenceCell.textContent : "");
+        if (!record) throw new Error("No shipment record found.");
+        showShipmentDetails(record);
+      } catch (err) {
+        alert(err?.message || "Failed to open shipment details.");
+      }
+      return;
+    }
+
+    const refreshBtn = e.target.closest("#refreshManifestBoard");
+    if (refreshBtn) {
+      await renderContainerManifestBoard();
+      return;
+    }
+
+    const manifestBtn = e.target.closest(".manifest-hbl-btn");
+    if (manifestBtn) {
+      try {
+        const c = JSON.parse(manifestBtn.getAttribute("data-container") || "{}");
+        await createManifestForContainer(c);
+      } catch (err) {
+        alert(err?.message || "Failed to create Manifest HBL.");
+      }
+      return;
+    }
+
+    const refreshContainersSubmenu = e.target.closest("#refreshContainersSubmenu");
+    if (refreshContainersSubmenu) return;
+
+    const refreshInline = e.target.closest("#refreshInlineContainers");
+    if (refreshInline) {
+      await renderInlineContainersTable();
+      return;
+    }
+    const prevInline = e.target.closest("#prevInlineContainers");
+    if (prevInline) {
+      containersCurrentPage = Math.max(1, containersCurrentPage - 1);
+      await renderInlineContainersTable();
+      return;
+    }
+    const nextInline = e.target.closest("#nextInlineContainers");
+    if (nextInline) {
+      const totalPages = Math.max(1, Math.ceil((containersAllRows.length || 0) / CONTAINERS_PAGE_SIZE));
+      containersCurrentPage = Math.min(totalPages, containersCurrentPage + 1);
+      await renderInlineContainersTable();
+      return;
+    }
+  }, true);
+
+  function autoRenderContainersPanel() {
+    if (!(location.hash || "").includes("china-dubai")) return;
+    const panel = document.getElementById(CONTAINERS_SUBMENU_PANEL_ID);
+    if (panel) panel.remove();
+    renderInlineContainersTable().catch(() => {});
+  }
+
+  function enhanceSeaImportJobModal() {
+    const heading = Array.from(document.querySelectorAll("h1,h2,h3,div,span"))
+      .find((el) => (el.textContent || "").trim().toLowerCase() === "add sea import job");
+    if (!heading) return;
+    const modal = heading.closest("div[role='dialog'], .modal, [class*='modal'], div");
+    if (!modal) return;
+
+    const containersText = Array.from(modal.querySelectorAll("div,span,label,strong"))
+      .find((el) => /containers/i.test((el.textContent || "").trim()) && /number of containers/i.test((modal.textContent || "").toLowerCase()));
+    if (!containersText) return;
+
+    if (modal.querySelector("#seaImportExtraFields")) return;
+
+    const block = document.createElement("div");
+    block.id = "seaImportExtraFields";
+    block.className = "sea-import-extra-wrap";
+    block.innerHTML = `
+      <div class="sea-import-extra-grid">
+        <div class="sea-import-extra-field"><label>Branch</label><select><option>UAE</option><option>KSA</option><option>OMAN</option><option>QATAR</option></select></div>
+        <div class="sea-import-extra-field"><label>Job Type *</label><select><option>SELECT JOB TYPE</option><option>FCL</option><option>CONSOLE</option><option>CO-LOAD</option><option>CO-LOAD FCL</option><option>BREAKBULK</option><option>DIRECT-FCL</option><option>DIRECT LCL</option></select></div>
+        <div class="sea-import-extra-field"><label>Shipment Type *</label><select><option>COC</option><option>SOC</option><option>FCL</option><option>LCL</option></select></div>
+        <div class="sea-import-extra-field"><label>Agent</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>Port of Loading *</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>ETD POL *</label><input type="date"></div>
+        <div class="sea-import-extra-field"><label>Port of Discharge</label><select><option>JEBEL ALI</option><option>ABU DHABI</option><option>SHARJAH</option></select></div>
+        <div class="sea-import-extra-field"><label>Vessel *</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>Voyage *</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>ETA Jebel Ali *</label><input type="date"></div>
+        <div class="sea-import-extra-field"><label>Discharge Date</label><input type="date"></div>
+        <div class="sea-import-extra-field"><label>Main Line *</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>Master B/L No *</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>Empty Removed By</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>Terminal</label><select><option>Terminal 1</option><option>Terminal 2</option><option>Terminal 3</option></select></div>
+        <div class="sea-import-extra-field"><label>Master B/L Freight Term</label><select><option>SELECT FREIGHT TERM</option><option>PREPAID</option><option>COLLECT</option></select></div>
+        <div class="sea-import-extra-field"><label>Carrier</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>Carrier Ref</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>Serial Number</label><input type="text"></div>
+        <div class="sea-import-extra-field"><label>USD Buying Ex. Rate</label><input type="number" step="0.01" value="3.76"></div>
+        <div class="sea-import-extra-field"><label>USD Selling Ex. Rate</label><input type="number" step="0.01" value="3.76"></div>
+        <div class="sea-import-extra-field"><label>Warehouse</label><input type="text"></div>
+        <div class="sea-import-extra-field sea-import-extra-full"><label>Warehouse Remarks</label><textarea></textarea></div>
+      </div>
+    `;
+
+    const containerHeader = containersText.closest("div");
+    if (containerHeader && containerHeader.parentElement) {
+      containerHeader.parentElement.insertBefore(block, containerHeader);
+    }
+  }
+
+  setInterval(injectRowActions, 1200);
+  // Disabled duplicate legacy board; using only the clean tracker table.
+  // setTimeout(renderContainerManifestBoard, 1200);
+  // Render immediately on load/hash changes, then light keep-alive refresh.
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => autoRenderContainersPanel(), { once: true });
+  } else {
+    autoRenderContainersPanel();
+  }
+  window.addEventListener("hashchange", () => autoRenderContainersPanel());
+  setTimeout(autoRenderContainersPanel, 120);
+  setTimeout(autoRenderContainersPanel, 400);
+  setInterval(autoRenderContainersPanel, 4000);
+  setInterval(enhanceSeaImportJobModal, 900);
+  if (localStorage.getItem("china_manifest_refresh") === "1") {
+    localStorage.removeItem("china_manifest_refresh");
+    // setTimeout(renderContainerManifestBoard, 1800);
+    setTimeout(autoRenderContainersPanel, 150);
+  }
+
+  injectStyles();
+  bindGlobalEvents();
+})();
